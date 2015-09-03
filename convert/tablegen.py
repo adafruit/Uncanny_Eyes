@@ -153,7 +153,6 @@ for y in range(im.size[1]):
 
 try:    irisSize = int(sys.argv[5])
 except: irisSize = 80
-radius    = irisSize / 2
 slitPupil = False
 if irisSize % 2 != 0:
 	print "Iris diameter must be even value"
@@ -161,6 +160,14 @@ if irisSize % 2 != 0:
 if irisSize < 0:
 	irisSize  = -irisSize
 	slitPupil = True
+	filename = "slitPupilMap.png" # HACKITY HACK, see notes later
+	im     = Image.open(filename) # OMG so wretched and hacky
+	if (im.size[0] != irisSize) or (im.size[1] != irisSize):
+		print "Image size must match iris size"
+		exit(1)
+	im     = im.convert("L")
+	pixels = im.load()
+radius = irisSize / 2
 
 print
 print "#define IRIS_WIDTH  " + str(irisSize)
@@ -187,11 +194,16 @@ for y in range(irisSize):
 		else:
 			if slitPupil:
 				# TODO: add magic here
-				# (dx, dy) = distance from center
+				# I totally cheated on the dragon eye
+				# included with the demo code -- made a
+				# canned distance bitmap using Illustrator +
+				# Photoshop and use that...but it's rigged
+				# to the bitmap size and isn't a generalized
+				# solution, which is what's needed here.
 				angle     = math.atan2(dy, dx)  # -pi to +pi
 				angle    += math.pi             # 0.0 to 2pi
 				angle    /= (math.pi * 2.0)     # 0.0 to <1.0
-				# distance = magic
+				distance  = pixels[x, y] / 255.0
 			else:
 				angle     = math.atan2(dy, dx)  # -pi to +pi
 				angle    += math.pi             # 0.0 to 2pi

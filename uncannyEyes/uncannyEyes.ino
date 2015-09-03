@@ -16,9 +16,9 @@
 #include <SPI.h>
 #include <Adafruit_GFX.h>      // Core graphics lib for Adafruit displays
 // Enable ONE of these #includes -- HUGE graphics tables for various eyes:
-#include "defaultEye.h"        // Standard human-ish eye
+#include "defaultEye.h"        // Standard human-ish hazel eye
 //#include "noScleraEye.h"       // Large iris / no sclera
-//#include "dragonEye.h"         // Slit pupil
+//#include "dragonEye.h"         // Slit pupil yellow/orange eye
 
 // DISPLAY HARDWARE CONFIG -------------------------------------------------
 
