@@ -153,10 +153,14 @@ for y in range(im.size[1]):
 
 try:    irisSize = int(sys.argv[5])
 except: irisSize = 80
-radius = irisSize / 2
+radius    = irisSize / 2
+slitPupil = False
 if irisSize % 2 != 0:
 	print "Iris diameter must be even value"
 	exit(1)
+if irisSize < 0:
+	irisSize  = -irisSize
+	slitPupil = True
 
 print
 print "#define IRIS_WIDTH  " + str(irisSize)
@@ -181,12 +185,20 @@ for y in range(irisSize):
 		if(distance >= radius): # Outside circle
 			outputHex(127, 4) # angle = 0, dist = 127
 		else:
-			angle     = math.atan2(dy, dx)  # -pi to +pi
-			angle    += math.pi             # 0.0 to 2pi
-			angle    /= (math.pi * 2.0)     # 0.0 to <1.0
-			a         = int(angle * 512.0)  # 0 to 511
-			distance /= radius              # 0.0 to <1.0
+			if slitPupil:
+				# TODO: add magic here
+				# (dx, dy) = distance from center
+				angle     = math.atan2(dy, dx)  # -pi to +pi
+				angle    += math.pi             # 0.0 to 2pi
+				angle    /= (math.pi * 2.0)     # 0.0 to <1.0
+				# distance = magic
+			else:
+				angle     = math.atan2(dy, dx)  # -pi to +pi
+				angle    += math.pi             # 0.0 to 2pi
+				angle    /= (math.pi * 2.0)     # 0.0 to <1.0
+				distance /= radius              # 0.0 to <1.0
 			distance *= 128.0               # 0.0 to <128.0
+			a         = int(angle * 512.0)  # 0 to 511
 			d         = 127 - int(distance) # 127 to 0
 			outputHex((a << 7) | d, 4)
 
