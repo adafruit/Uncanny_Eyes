@@ -160,7 +160,7 @@ if irisSize % 2 != 0:
 if irisSize < 0:
 	irisSize  = -irisSize
 	slitPupil = True
-	filename = "slitPupilMap.png" # HACKITY HACK, see notes later
+	filename = "pupilMap.png"     # HACKITY HACK, see notes later
 	im     = Image.open(filename) # OMG so wretched and hacky
 	if (im.size[0] != irisSize) or (im.size[1] != irisSize):
 		print "Image size must match iris size"
