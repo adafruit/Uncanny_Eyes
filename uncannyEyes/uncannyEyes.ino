@@ -33,27 +33,27 @@ typedef Adafruit_ST7735  displayType; // Using TFT display(s)
 typedef Adafruit_SSD1351 displayType; // Using OLED display(s)
 #endif
 
-#define DISPLAY_RESET   7 // Reset pin for BOTH displays
-#define DISPLAY_DC      8 // Data/command pin for BOTH displays
-#define SELECT_R_PIN    9 // RIGHT eye chip select pin
-#define SELECT_L_PIN   10 // LEFT eye chip select pin
+#define DISPLAY_DC      7 // Data/command pin for BOTH displays
+#define DISPLAY_RESET   8 // Reset pin for BOTH displays
+#define SELECT_L_PIN    9 // LEFT eye chip select pin
+#define SELECT_R_PIN   10 // RIGHT eye chip select pin
 
 // INPUT CONFIG (for eye motion -- enable or comment out as needed) --------
 
 //#define JOYSTICK_X_PIN A0 // Analog pin for eye horiz pos (else auto)
 //#define JOYSTICK_Y_PIN A1 // Analog pin for eye vert position (")
-#define JOYSTICK_X_FLIP   // If set, reverse stick X axis
+//#define JOYSTICK_X_FLIP   // If set, reverse stick X axis
 //#define JOYSTICK_Y_FLIP   // If set, reverse stick Y axis
-#define BLINK_PIN       2 // Pin for blink button (BOTH eyes)
-#define WINK_R_PIN      3 // Pin for RIGHT eye wink button
-#define WINK_L_PIN      4 // Pin for LEFT eye wink button
-#define AUTOBLINK         // If enabled, eyes blink autonomously
 #define TRACKING          // If enabled, eyelid tracks pupil
-#define IRIS_PIN       A3 // Photocell or potentiometer (else auto iris)
+#define IRIS_PIN       A2 // Photocell or potentiometer (else auto iris)
 //#define IRIS_PIN_FLIP     // If set, reverse reading from dial/photocell
 #define IRIS_SMOOTH       // If enabled, filter input from IRIS_PIN
 #define IRIS_MIN      120 // Clip lower analogRead() range from IRIS_PIN
 #define IRIS_MAX      720 // Clip upper "
+#define WINK_L_PIN      0 // Pin for LEFT eye wink button
+#define BLINK_PIN       1 // Pin for blink button (BOTH eyes)
+#define WINK_R_PIN      2 // Pin for RIGHT eye wink button
+#define AUTOBLINK         // If enabled, eyes blink autonomously
 
 // Probably don't need to edit any config below this line, -----------------
 // unless building a single-eye project (pendant, etc.), in which case one
