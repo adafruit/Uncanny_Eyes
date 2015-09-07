@@ -225,7 +225,7 @@ void frame( // Process motion for a single frame of left or right eye
   int16_t         eyeX, eyeY;
   uint32_t        t = micros(); // Time at start of function
 
-  Serial.println((++frames * 1000) / t);   // Show frame rate
+  Serial.println((++frames * 1000) / millis()); // Show frame rate
 
   if(++eyeIndex >= NUM_EYES) eyeIndex = 0; // Cycle through eyes, 1 per call
 
