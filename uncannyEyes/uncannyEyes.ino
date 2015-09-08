@@ -10,7 +10,7 @@
 //
 // Written by Phil Burgess / Paint Your Dragon for Adafruit Industries.
 // MIT license.  SPI FIFO insight from Paul Stoffregen's ILI9341_t3 library.
-// Inspired by David Boccabella's hybrid animatronic/OLED eye concept.
+// Inspired by David Boccabella's (Marcwolf) hybrid servo/OLED eye concept.
 //--------------------------------------------------------------------------
 
 #include <SPI.h>
@@ -364,7 +364,7 @@ void frame( // Process motion for a single frame of left or right eye
   // Horizontal position is offset so that eyes are very slightly crossed
   // to appear fixated (converged) at a conversational distance.  Number
   // here was extracted from my posterior and not mathematically based.
-  // I suppose one could get all clever with a depth sensor, but for now...
+  // I suppose one could get all clever with a range sensor, but for now...
   eyeX += 4;
   if(eyeX > (SCLERA_WIDTH - 128)) eyeX = (SCLERA_WIDTH - 128);
 
