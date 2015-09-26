@@ -95,7 +95,10 @@ void setup(void) {
   digitalWrite(DISPLAY_RESET, LOW);  delay(1);
   digitalWrite(DISPLAY_RESET, HIGH); delay(50);
 
-  for(e=0; e<NUM_EYES; e++) digitalWrite(eye[e].cs, HIGH); // Deselect all
+  for(e=0; e<NUM_EYES; e++) { // Deselect all
+    pinMode(eye[e].cs, OUTPUT);
+    digitalWrite(eye[e].cs, HIGH);
+  }
   for(e=0; e<NUM_EYES; e++) {
     digitalWrite(eye[e].cs, LOW); // Select one eye for init
 #ifdef _ADAFRUIT_ST7735H_ // TFT
