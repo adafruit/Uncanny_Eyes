@@ -84,6 +84,8 @@ struct {
 // INITIALIZATION -- runs once at startup ----------------------------------
 
 void setup(void) {
+  uint8_t e;
+
   Serial.begin(115200);
   randomSeed(analogRead(A3)); // Seed random() from floating analog input
 
@@ -93,14 +95,16 @@ void setup(void) {
   digitalWrite(DISPLAY_RESET, LOW);  delay(1);
   digitalWrite(DISPLAY_RESET, HIGH); delay(50);
 
-  // For some reason display #1 must init first, else jumbled.  WTH?
-  for(uint8_t e=NUM_EYES; e--; ) { // Work last-to-first
+  for(e=0; e<NUM_EYES; e++) digitalWrite(eye[e].cs, HIGH); // Deselect all
+  for(e=0; e<NUM_EYES; e++) {
+    digitalWrite(eye[e].cs, LOW); // Select one eye for init
 #ifdef _ADAFRUIT_ST7735H_ // TFT
     eye[e].display.initR(INITR_144GREENTAB);
 #else // OLED
     eye[e].display.begin();
 #endif
     if(eye[e].blink.pin >= 0) pinMode(eye[e].blink.pin, INPUT_PULLUP);
+    digitalWrite(eye[e].cs, HIGH); // Deselect
   }
 #ifdef BLINK_PIN
   pinMode(BLINK_PIN, INPUT_PULLUP);
