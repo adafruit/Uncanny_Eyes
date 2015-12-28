@@ -69,7 +69,7 @@ try:    filename = sys.argv[2]
 except: filename = "iris.png"
 im = Image.open(filename)
 if (im.size[0] > 512) or (im.size[1] > 128):
-	print "Image can't exceed 512 pixels wide or 128 pixels tall"
+	sys.stderr.write("Image can't exceed 512 pixels wide or 128 pixels tall")
 	exit(1)
 im     = im.convert("RGB")
 pixels = im.load()
@@ -101,7 +101,7 @@ try:    filename = sys.argv[3]
 except: filename = "upper.png"
 im = Image.open(filename)
 if (im.size[0] != 128) or (im.size[1] != 128):
-	print "Image size must match screen size"
+	sys.stderr.write("Image size must match screen size")
 	exit(1)
 im     = im.convert("L")
 pixels = im.load()
@@ -130,7 +130,7 @@ try:    filename = sys.argv[4]
 except: filename = "lower.png"
 im     = Image.open(filename)
 if (im.size[0] != 128) or (im.size[1] != 128):
-	print "Image size must match screen size"
+	sys.stderr.write("Image size must match screen size")
 	exit(1)
 im     = im.convert("L")
 pixels = im.load()
@@ -155,7 +155,7 @@ try:    irisSize = int(sys.argv[5])
 except: irisSize = 80
 slitPupil = False
 if irisSize % 2 != 0:
-	print "Iris diameter must be even value"
+	sys.stderr.write("Iris diameter must be even value")
 	exit(1)
 if irisSize < 0:
 	irisSize  = -irisSize
@@ -163,7 +163,7 @@ if irisSize < 0:
 	filename = "pupilMap.png"     # HACKITY HACK, see notes later
 	im     = Image.open(filename) # OMG so wretched and hacky
 	if (im.size[0] != irisSize) or (im.size[1] != irisSize):
-		print "Image size must match iris size"
+		sys.stderr.write("Image size must match iris size")
 		exit(1)
 	im     = im.convert("L")
 	pixels = im.load()
