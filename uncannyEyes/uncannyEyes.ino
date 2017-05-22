@@ -66,7 +66,7 @@ typedef Adafruit_SSD1351 displayType; // Using OLED display(s)
 typedef struct {
   int8_t   pin;       // Optional button here for indiv. wink
   uint8_t  state;     // NOBLINK/ENBLINK/DEBLINK
-  int32_t  duration;  // Duration of blink state (micros)
+  uint32_t duration;  // Duration of blink state (micros)
   uint32_t startTime; // Time (micros) of last state change
 } eyeBlink;
 
@@ -457,7 +457,7 @@ void split( // Subdivides motion path into two sub-paths w/randimization
 
 void loop() {
 
-#ifdef IRIS_PIN && (IRIS_PIN >= 0) // Interactive iris
+#if defined(IRIS_PIN) && (IRIS_PIN >= 0) // Interactive iris
 
   uint16_t v = analogRead(IRIS_PIN);       // Raw dial/photocell reading
 #ifdef IRIS_PIN_FLIP
