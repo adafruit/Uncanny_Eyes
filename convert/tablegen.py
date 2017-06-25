@@ -209,8 +209,9 @@ for y in range(irisSize):
 				angle    += math.pi             # 0.0 to 2pi
 				angle    /= (math.pi * 2.0)     # 0.0 to <1.0
 				distance /= radius              # 0.0 to <1.0
-			distance *= 128.0               # 0.0 to <128.0
-			a         = int(angle * 512.0)  # 0 to 511
-			d         = 127 - int(distance) # 127 to 0
+			distance *= 128.0                 # 0.0 to <128.0
+			if distance > 127: distance = 127 # Clip
+			a         = int(angle * 512.0)    # 0 to 511
+			d         = 127 - int(distance)   # 127 to 0
 			outputHex((a << 7) | d, 4)
 
