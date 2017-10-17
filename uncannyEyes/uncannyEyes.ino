@@ -20,6 +20,7 @@
 //#include "noScleraEye.h"       // Large iris, no sclera
 //#include "dragonEye.h"         // Slit pupil fiery dragon/demon eye
 //#include "goatEye.h"           // Horizontal pupil goat/Krampus eye
+//#include "newtEye.h"           // She turned me into a newt!
 // Then tweak settings below, e.g. change IRIS_MIN/MAX or disable TRACKING.
 
 // DISPLAY HARDWARE CONFIG -------------------------------------------------
