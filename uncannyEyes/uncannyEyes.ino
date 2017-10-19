@@ -15,12 +15,13 @@
 
 #include <SPI.h>
 #include <Adafruit_GFX.h>      // Core graphics lib for Adafruit displays
+#include "logo.h"                // For screen testing, OK to comment out
 // Enable ONE of these #includes -- HUGE graphics tables for various eyes:
 #include "defaultEye.h"        // Standard human-ish hazel eye
 //#include "noScleraEye.h"       // Large iris, no sclera
 //#include "dragonEye.h"         // Slit pupil fiery dragon/demon eye
 //#include "goatEye.h"           // Horizontal pupil goat/Krampus eye
-//#include "newtEye.h"           // She turned me into a newt!
+//#include "newtEye.h"           // Eye of newt
 // Then tweak settings below, e.g. change IRIS_MIN/MAX or disable TRACKING.
 
 // DISPLAY HARDWARE CONFIG -------------------------------------------------
@@ -108,10 +109,24 @@ void setup(void) {
     eye[e].display.begin();
 #endif
     if(eye[e].blink.pin >= 0) pinMode(eye[e].blink.pin, INPUT_PULLUP);
+#ifdef LOGO_TOP_WIDTH
+    // I noticed lots of folks getting right/left eyes flipped, or
+    // installing upside-down, etc.  Logo split across screens may help:
+    eye[e].display.fillScreen(0);
+    eye[e].display.drawBitmap(NUM_EYES*64 - e*128 - 20,
+      0, logo_top, LOGO_TOP_WIDTH, LOGO_TOP_HEIGHT, 0xFFFF);
+    eye[e].display.drawBitmap(NUM_EYES*64 - e*128 - LOGO_BOTTOM_WIDTH/2,
+      LOGO_TOP_HEIGHT, logo_bottom, LOGO_BOTTOM_WIDTH, LOGO_BOTTOM_HEIGHT,
+      0xFFFF);
+#endif
     digitalWrite(eye[e].cs, HIGH); // Deselect
   }
 #ifdef BLINK_PIN
   pinMode(BLINK_PIN, INPUT_PULLUP);
+#endif
+
+#ifdef LOGO_TOP_WIDTH
+  delay(3000); // Pause for screen layout/orientation
 #endif
 
   // One of the displays is configured to mirror on the X axis.  Simplifies
