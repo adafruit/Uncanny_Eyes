@@ -29,7 +29,7 @@
 #include <Adafruit_SSD1351.h>  // OLED display library -OR-
 //#include <Adafruit_ST7735.h> // TFT display library (enable one only)
 
-#ifdef _ADAFRUIT_ST7735H_
+#if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_)
 typedef Adafruit_ST7735  displayType; // Using TFT display(s)
 #else
 typedef Adafruit_SSD1351 displayType; // Using OLED display(s)
@@ -103,7 +103,7 @@ void setup(void) {
   }
   for(e=0; e<NUM_EYES; e++) {
     digitalWrite(eye[e].cs, LOW); // Select one eye for init
-#ifdef _ADAFRUIT_ST7735H_ // TFT
+#if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_) // TFT
     eye[e].display.initR(INITR_144GREENTAB);
 #else // OLED
     eye[e].display.begin();
@@ -133,10 +133,14 @@ void setup(void) {
   // eyelid handling in the drawEye() function -- no need for distinct
   // L-to-R or R-to-L inner loops.  Just the X coordinate of the iris is
   // then reversed when drawing this eye, so they move the same.  Magic!
-#ifdef _ADAFRUIT_ST7735H_ // TFT
+#if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_) // TFT
   digitalWrite(eye[0].cs , LOW);
   digitalWrite(DISPLAY_DC, LOW);
-  SPI.transfer(ST7735_MADCTL);
+#ifdef ST77XX_MADCTL
+  SPI.transfer(ST77XX_MADCTL); // Current TFT lib
+#else
+  SPI.transfer(ST7735_MADCTL); // Older TFT lib
+#endif
   digitalWrite(DISPLAY_DC, HIGH);
   SPI.transfer(0x88); // MADCTL_MY | MADCTL_BGR
   digitalWrite(eye[0].cs , HIGH);
@@ -168,7 +172,7 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
   // around automatically from end of rect back to beginning, the region is
   // reset on each frame here in case of an SPI glitch.
   SPI.beginTransaction(settings);
-#ifdef _ADAFRUIT_ST7735H_ // TFT
+#if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_) // TFT
   eye[e].display.setAddrWindow(0, 0, 127, 127);
 #else // OLED
   eye[e].display.writeCommand(SSD1351_CMD_SETROW);    // Y range
