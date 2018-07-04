@@ -1,8 +1,9 @@
 //--------------------------------------------------------------------------
-// Uncanny eyes for PJRC Teensy 3.1 with Adafruit 1.5" OLED (product #1431)
-// or 1.44" TFT LCD (#2088).  This uses Teensy-3.1-specific features and
-// WILL NOT work on normal Arduino or other boards!  Use 72 MHz (Optimized)
-// board speed -- OLED does not work at 96 MHz.
+// Uncanny eyes for Adafruit 1.5" OLED (product #1431) or 1.44" TFT LCD
+// (#2088).  Works on PJRC Teensy 3.x and on Adafruit M0 and M4 boards
+// (Feather, Metro, etc.).  This code uses features specific to these
+// boards and WILL NOT work on normal Arduino or other boards!
+// For Teensy 3.x: Use 72 MHz board speed -- OLED does not work at 96 MHz.
 //
 // Adafruit invests time and resources providing this open source code,
 // please support Adafruit and open-source hardware by purchasing products
@@ -30,10 +31,18 @@
 //#include <Adafruit_ST7735.h> // TFT display library (enable one only)
 
 #if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_)
-typedef Adafruit_ST7735  displayType; // Using TFT display(s)
+  typedef Adafruit_ST7735  displayType; // Using TFT display(s)
 #else
-typedef Adafruit_SSD1351 displayType; // Using OLED display(s)
+  typedef Adafruit_SSD1351 displayType; // Using OLED display(s)
 #endif
+#ifdef ARDUINO_ARCH_SAMD
+  #include <Adafruit_ZeroDMA.h>
+#endif
+
+// The pin selections here are based on the original Adafruit Learning
+// System guide for the Teensy 3.x project.  Some of these pin numbers
+// don't even exist on the smaller SAMD M0 & M4 boards, so you may need
+// to make other selections:
 
 #define DISPLAY_DC      7 // Data/command pin for BOTH displays
 #define DISPLAY_RESET   8 // Reset pin for BOTH displays
@@ -82,6 +91,23 @@ struct {
 };
 #define NUM_EYES (sizeof(eye) / sizeof(eye[0]))
 
+#ifdef ARDUINO_ARCH_SAMD
+  // SAMD boards use DMA (Teensy uses SPI FIFO instead):
+  // Two single-line 128-pixel buffers (16bpp) are used for DMA.
+  // Though you'd think fewer larger transfers would improve speed,
+  // multi-line buffering made no appreciable difference.
+  uint16_t          dmaBuf[2][128];
+  uint8_t           dmaIdx = 0; // Active DMA buffer # (alternate fill/send)
+  Adafruit_ZeroDMA  dma;
+  DmacDescriptor   *descriptor;
+
+  // DMA transfer-in-progress indicator and callback
+  static volatile bool dma_busy = false;
+  static void dma_callback(Adafruit_ZeroDMA *dma) { dma_busy = false; }
+#endif
+
+uint32_t startTime;  // For FPS indicator
+
 
 // INITIALIZATION -- runs once at startup ----------------------------------
 
@@ -126,7 +152,7 @@ void setup(void) {
 #endif
 
 #ifdef LOGO_TOP_WIDTH
-  delay(3000); // Pause for screen layout/orientation
+  delay(2000); // Pause for screen layout/orientation
 #endif
 
   // One of the displays is configured to mirror on the X axis.  Simplifies
@@ -148,12 +174,64 @@ void setup(void) {
   eye[0].display.writeCommand(SSD1351_CMD_SETREMAP);
   eye[0].display.writeData(0x76);
 #endif
+
+#ifdef ARDUINO_ARCH_SAMD
+  int                dmac_id;
+  volatile uint32_t *data_reg;
+  if(&PERIPH_SPI == &sercom0) {
+    dmac_id  = SERCOM0_DMAC_ID_TX;
+    data_reg = &SERCOM0->SPI.DATA.reg;
+#if defined SERCOM1
+  } else if(&PERIPH_SPI == &sercom1) {
+    dmac_id  = SERCOM1_DMAC_ID_TX;
+    data_reg = &SERCOM1->SPI.DATA.reg;
+#endif
+#if defined SERCOM2
+  } else if(&PERIPH_SPI == &sercom2) {
+    dmac_id  = SERCOM2_DMAC_ID_TX;
+    data_reg = &SERCOM2->SPI.DATA.reg;
+#endif
+#if defined SERCOM3
+  } else if(&PERIPH_SPI == &sercom3) {
+    dmac_id  = SERCOM3_DMAC_ID_TX;
+    data_reg = &SERCOM3->SPI.DATA.reg;
+#endif
+#if defined SERCOM4
+  } else if(&PERIPH_SPI == &sercom4) {
+    dmac_id  = SERCOM4_DMAC_ID_TX;
+    data_reg = &SERCOM4->SPI.DATA.reg;
+#endif
+#if defined SERCOM5
+  } else if(&PERIPH_SPI == &sercom5) {
+    dmac_id  = SERCOM5_DMAC_ID_TX;
+    data_reg = &SERCOM5->SPI.DATA.reg;
+#endif
+  }
+
+  dma.allocate();
+  dma.setTrigger(dmac_id);
+  dma.setAction(DMA_TRIGGER_ACTON_BEAT);
+  descriptor = dma.addDescriptor(
+    NULL,               // move data
+    (void *)data_reg,   // to here
+    sizeof dmaBuf[0],   // this many...
+    DMA_BEAT_SIZE_BYTE, // bytes/hword/words
+    true,               // increment source addr?
+    false);             // increment dest addr?
+  dma.setCallback(dma_callback);
+#endif
+
+  startTime = millis();
 }
 
 
 // EYE-RENDERING FUNCTION --------------------------------------------------
 
-SPISettings settings(24000000, MSBFIRST, SPI_MODE3); // Teensy 3.1 max SPI
+#ifdef ARDUINO_ARCH_SAMD
+  SPISettings settings(12000000, MSBFIRST, SPI_MODE0); // SAMD max SPI
+#else
+  SPISettings settings(24000000, MSBFIRST, SPI_MODE0); // Teensy 3.1 max SPI
+#endif
 
 void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
   uint8_t  e,       // Eye array index; 0 or 1 for left/right
@@ -188,6 +266,9 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
   scleraXsave = scleraX; // Save initial X value to reset on each line
   irisY       = scleraY - (SCLERA_HEIGHT - IRIS_HEIGHT) / 2;
   for(screenY=0; screenY<SCREEN_HEIGHT; screenY++, scleraY++, irisY++) {
+#ifdef ARDUINO_ARCH_SAMD
+    uint16_t *ptr = &dmaBuf[dmaIdx][0];
+#endif
     scleraX = scleraXsave;
     irisX   = scleraXsave - (SCLERA_WIDTH - IRIS_WIDTH) / 2;
     for(screenX=0; screenX<SCREEN_WIDTH; screenX++, scleraX++, irisX++) {
@@ -207,15 +288,31 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
           p = sclera[scleraY][scleraX];                 // Pixel = sclera
         }
       }
+#ifdef ARDUINO_ARCH_SAMD
+      *ptr++ = __builtin_bswap16(p); // DMA: store in scanline buffer
+#else
       // SPI FIFO technique from Paul Stoffregen's ILI9341_t3 library:
       while(KINETISK_SPI0.SR & 0xC000); // Wait for space in FIFO
       KINETISK_SPI0.PUSHR = p | SPI_PUSHR_CTAS(1) | SPI_PUSHR_CONT;
-    }
-  }
+#endif
+    } // end column
+#ifdef ARDUINO_ARCH_SAMD
+    while(dma_busy); // Wait for prior DMA xfer to finish
+    descriptor->SRCADDR.reg = (uint32_t)&dmaBuf[dmaIdx] + sizeof dmaBuf[0];
+    dma_busy = true;
+    dmaIdx   = 1 - dmaIdx;
+    dma.startJob();
+#endif
+  } // end scanline
 
+#ifdef ARDUINO_ARCH_SAMD
+  while(dma_busy);  // Wait for last scanline to transmit
+#else
   KINETISK_SPI0.SR |= SPI_SR_TCF;         // Clear transfer flag
   while((KINETISK_SPI0.SR & 0xF000) ||    // Wait for SPI FIFO to drain
        !(KINETISK_SPI0.SR & SPI_SR_TCF)); // Wait for last bit out
+#endif
+
   digitalWrite(eye[e].cs, HIGH);          // Deselect
   SPI.endTransaction();
 }
@@ -252,7 +349,10 @@ void frame( // Process motion for a single frame of left or right eye
   int16_t         eyeX, eyeY;
   uint32_t        t = micros(); // Time at start of function
 
-  Serial.println((++frames * 1000) / millis()); // Show frame rate
+  if(!(++frames & 255)) { // Every 256 frames...
+    uint32_t elapsed = (millis() - startTime) / 1000;
+    if(elapsed) Serial.println(frames / elapsed); // Print FPS
+  }
 
   if(++eyeIndex >= NUM_EYES) eyeIndex = 0; // Cycle through eyes, 1 per call
 
