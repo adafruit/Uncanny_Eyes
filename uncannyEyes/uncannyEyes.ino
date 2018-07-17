@@ -147,7 +147,7 @@ void setup(void) {
 #endif
     digitalWrite(eye[e].cs, HIGH); // Deselect
   }
-#ifdef BLINK_PIN
+#if defined(BLINK_PIN) && (BLINK_PIN >= 0)
   pinMode(BLINK_PIN, INPUT_PULLUP);
 #endif
 
@@ -228,7 +228,11 @@ void setup(void) {
 // EYE-RENDERING FUNCTION --------------------------------------------------
 
 #ifdef ARDUINO_ARCH_SAMD
-  SPISettings settings(12000000, MSBFIRST, SPI_MODE0); // SAMD max SPI
+#ifdef __SAMD51__
+  SPISettings settings(24000000, MSBFIRST, SPI_MODE0); // SAMD51 max SPI
+#else
+  SPISettings settings(12000000, MSBFIRST, SPI_MODE0); // SAMD21 max SPI
+#endif
 #else
   SPISettings settings(24000000, MSBFIRST, SPI_MODE0); // Teensy 3.1 max SPI
 #endif
@@ -250,8 +254,9 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
   // around automatically from end of rect back to beginning, the region is
   // reset on each frame here in case of an SPI glitch.
   SPI.beginTransaction(settings);
+  digitalWrite(eye[e].cs, LOW);                       // Chip select
 #if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_) // TFT
-  eye[e].display.setAddrWindow(0, 0, 127, 127);
+  eye[e].display.setAddrWindow(0, 0, 128, 128);
 #else // OLED
   eye[e].display.writeCommand(SSD1351_CMD_SETROW);    // Y range
   eye[e].display.writeData(0); eye[e].display.writeData(SCREEN_HEIGHT - 1);
@@ -259,7 +264,6 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
   eye[e].display.writeData(0); eye[e].display.writeData(SCREEN_WIDTH  - 1);
   eye[e].display.writeCommand(SSD1351_CMD_WRITERAM);  // Begin write
 #endif
-  digitalWrite(eye[e].cs, LOW);                       // Chip select
   digitalWrite(DISPLAY_DC, HIGH);                     // Data mode
   // Now just issue raw 16-bit values for every pixel...
 
@@ -446,9 +450,12 @@ void frame( // Process motion for a single frame of left or right eye
     // Check if current blink state time has elapsed
     if((t - eye[eyeIndex].blink.startTime) >= eye[eyeIndex].blink.duration) {
       // Yes -- increment blink state, unless...
-      if((eye[eyeIndex].blink.state == ENBLINK) &&  // Enblinking and...
-        ((digitalRead(BLINK_PIN) == LOW) ||         // blink or wink held...
-          digitalRead(eye[eyeIndex].blink.pin) == LOW)) {
+      if((eye[eyeIndex].blink.state == ENBLINK) && ( // Enblinking and...
+#if defined(BLINK_PIN) && (BLINK_PIN >= 0)
+        (digitalRead(BLINK_PIN) == LOW) ||           // blink or wink held...
+#endif
+        ((eye[eyeIndex].blink.pin >= 0) &&
+         digitalRead(eye[eyeIndex].blink.pin) == LOW) )) {
         // Don't advance state yet -- eye is held closed instead
       } else { // No buttons, or other state...
         if(++eye[eyeIndex].blink.state > DEBLINK) { // Deblinking finished?
@@ -460,6 +467,7 @@ void frame( // Process motion for a single frame of left or right eye
       }
     }
   } else { // Not currently blinking...check buttons!
+#if defined(BLINK_PIN) && (BLINK_PIN >= 0)
     if(digitalRead(BLINK_PIN) == LOW) {
       // Manually-initiated blinks have random durations like auto-blink
       uint32_t blinkDuration = random(36000, 72000);
@@ -470,7 +478,10 @@ void frame( // Process motion for a single frame of left or right eye
           eye[e].blink.duration  = blinkDuration;
         }
       }
-    } else if(digitalRead(eye[eyeIndex].blink.pin) == LOW) { // Wink!
+    } else
+#endif
+    if((eye[eyeIndex].blink.pin >= 0) &&
+       (digitalRead(eye[eyeIndex].blink.pin) == LOW)) { // Wink!
       eye[eyeIndex].blink.state     = ENBLINK;
       eye[eyeIndex].blink.startTime = t;
       eye[eyeIndex].blink.duration  = random(45000, 90000);
