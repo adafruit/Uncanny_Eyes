@@ -3,7 +3,10 @@
 // (#2088).  Works on PJRC Teensy 3.x and on Adafruit M0 and M4 boards
 // (Feather, Metro, etc.).  This code uses features specific to these
 // boards and WILL NOT work on normal Arduino or other boards!
-// For Teensy 3.x: Use 72 MHz board speed -- OLED does not work at 96 MHz.
+//
+// SEE FILE "config.h" FOR MOST CONFIGURATION (graphics, pins, display type,
+// etc).  Probably won't need to edit THIS file unless you're doing some
+// extremely custom modifications.
 //
 // Adafruit invests time and resources providing this open source code,
 // please support Adafruit and open-source hardware by purchasing products
@@ -15,81 +18,40 @@
 //--------------------------------------------------------------------------
 
 #include <SPI.h>
-#include <Adafruit_GFX.h>      // Core graphics lib for Adafruit displays
-#include "logo.h"                // For screen testing, OK to comment out
-// Enable ONE of these #includes -- HUGE graphics tables for various eyes:
-#include "defaultEye.h"        // Standard human-ish hazel eye
-//#include "noScleraEye.h"       // Large iris, no sclera
-//#include "dragonEye.h"         // Slit pupil fiery dragon/demon eye
-//#include "goatEye.h"           // Horizontal pupil goat/Krampus eye
-//#include "newtEye.h"           // Eye of newt
-// Then tweak settings below, e.g. change IRIS_MIN/MAX or disable TRACKING.
+#include <Adafruit_GFX.h>
+#ifdef ARDUINO_ARCH_SAMD
+  #include <Adafruit_ZeroDMA.h>
+#endif
 
-// DISPLAY HARDWARE CONFIG -------------------------------------------------
+typedef struct {        // Struct is defined before including config.h --
+  int8_t select;        // pin numbers for each eye's screen select line
+  int8_t wink;          // and wink button (or -1 if none)
+} eyePins_t;            // are specified there...
 
-#include <Adafruit_SSD1351.h>  // OLED display library -OR-
-//#include <Adafruit_ST7735.h> // TFT display library (enable one only)
+#include "config.h"     // ****** CONFIGURATION IS DONE IN HERE ******
 
 #if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_)
   typedef Adafruit_ST7735  displayType; // Using TFT display(s)
 #else
   typedef Adafruit_SSD1351 displayType; // Using OLED display(s)
 #endif
-#ifdef ARDUINO_ARCH_SAMD
-  #include <Adafruit_ZeroDMA.h>
-#endif
 
-// The pin selections here are based on the original Adafruit Learning
-// System guide for the Teensy 3.x project.  Some of these pin numbers
-// don't even exist on the smaller SAMD M0 & M4 boards, so you may need
-// to make other selections:
-
-#define DISPLAY_DC      7 // Data/command pin for BOTH displays
-#define DISPLAY_RESET   8 // Reset pin for BOTH displays
-#define SELECT_L_PIN    9 // LEFT eye chip select pin
-#define SELECT_R_PIN   10 // RIGHT eye chip select pin
-
-// INPUT CONFIG (for eye motion -- enable or comment out as needed) --------
-
-//#define JOYSTICK_X_PIN A0 // Analog pin for eye horiz pos (else auto)
-//#define JOYSTICK_Y_PIN A1 // Analog pin for eye vert position (")
-//#define JOYSTICK_X_FLIP   // If set, reverse stick X axis
-//#define JOYSTICK_Y_FLIP   // If set, reverse stick Y axis
-#define TRACKING          // If enabled, eyelid tracks pupil
-#define IRIS_PIN       A2 // Photocell or potentiometer (else auto iris)
-//#define IRIS_PIN_FLIP     // If set, reverse reading from dial/photocell
-#define IRIS_SMOOTH       // If enabled, filter input from IRIS_PIN
-#define IRIS_MIN      120 // Clip lower analogRead() range from IRIS_PIN
-#define IRIS_MAX      720 // Clip upper "
-#define WINK_L_PIN      0 // Pin for LEFT eye wink button
-#define BLINK_PIN       1 // Pin for blink button (BOTH eyes)
-#define WINK_R_PIN      2 // Pin for RIGHT eye wink button
-#define AUTOBLINK         // If enabled, eyes blink autonomously
-
-// Probably don't need to edit any config below this line, -----------------
-// unless building a single-eye project (pendant, etc.), in which case one
-// of the two elements in the eye[] array further down can be commented out.
-
-// Eye blinks are a tiny 3-state machine.  Per-eye allows winks + blinks.
-#define NOBLINK 0     // Not currently engaged in a blink
-#define ENBLINK 1     // Eyelid is currently closing
-#define DEBLINK 2     // Eyelid is currently opening
+// A simple state machine is used to control eye blinks/winks:
+#define NOBLINK 0       // Not currently engaged in a blink
+#define ENBLINK 1       // Eyelid is currently closing
+#define DEBLINK 2       // Eyelid is currently opening
 typedef struct {
-  int8_t   pin;       // Optional button here for indiv. wink
-  uint8_t  state;     // NOBLINK/ENBLINK/DEBLINK
-  uint32_t duration;  // Duration of blink state (micros)
-  uint32_t startTime; // Time (micros) of last state change
+  uint8_t  state;       // NOBLINK/ENBLINK/DEBLINK
+  uint32_t duration;    // Duration of blink state (micros)
+  uint32_t startTime;   // Time (micros) of last state change
 } eyeBlink;
 
-struct {
-  displayType display; // OLED/TFT object
-  uint8_t     cs;      // Chip select pin
-  eyeBlink    blink;   // Current blink state
-} eye[] = { // OK to comment out one of these for single-eye display:
-  displayType(SELECT_L_PIN,DISPLAY_DC,0),SELECT_L_PIN,{WINK_L_PIN,NOBLINK},
-  displayType(SELECT_R_PIN,DISPLAY_DC,0),SELECT_R_PIN,{WINK_R_PIN,NOBLINK},
-};
-#define NUM_EYES (sizeof(eye) / sizeof(eye[0]))
+#define NUM_EYES (sizeof eyePins / sizeof eyePins[0]) // config.h pin list
+
+struct {                // One-per-eye structure
+  displayType *display; // -> OLED/TFT object
+  eyeBlink     blink;   // Current blink/wink state
+} eye[NUM_EYES];
 
 #ifdef ARDUINO_ARCH_SAMD
   // SAMD boards use DMA (Teensy uses SPI FIFO instead):
@@ -112,46 +74,62 @@ uint32_t startTime;  // For FPS indicator
 // INITIALIZATION -- runs once at startup ----------------------------------
 
 void setup(void) {
-  uint8_t e;
+  uint8_t e; // Eye index, 0 to NUM_EYES-1
 
   Serial.begin(115200);
   randomSeed(analogRead(A3)); // Seed random() from floating analog input
 
-  // Both displays share a common reset line; 0 is passed to display
-  // constructor (so no reset in begin()) -- must reset manually here:
+  // Initialize eye objects based on eyePins list in config.h:
+  for(e=0; e<NUM_EYES; e++) {
+    eye[e].display     = new displayType(eyePins[e].select, DISPLAY_DC, -1);
+    eye[e].blink.state = NOBLINK;
+    // If project involves only ONE eye and NO other SPI devices, its
+    // select line can be permanently tied to GND and corresponding pin
+    // in config.h set to -1.  Best to use it though.
+    if(eyePins[e].select >= 0) {
+      pinMode(eyePins[e].select, OUTPUT);
+      digitalWrite(eyePins[e].select, HIGH); // Deselect them all
+    }
+    // Also set up an individual eye-wink pin if defined:
+    if(eyePins[e].wink >= 0) pinMode(eyePins[e].wink, INPUT_PULLUP);
+  }
+#if defined(BLINK_PIN) && (BLINK_PIN >= 0)
+  pinMode(BLINK_PIN, INPUT_PULLUP); // Ditto for all-eyes blink pin
+#endif
+
+#if defined(DISPLAY_RESET) && (DISPLAY_RESET >= 0)
+  // Because both displays share a common reset pin, -1 is passed to
+  // the display constructor above to prevent the begin() function from
+  // resetting both displays after one is initialized.  Instead, handle
+  // the reset manually here to take care of both displays just once:
   pinMode(DISPLAY_RESET, OUTPUT);
   digitalWrite(DISPLAY_RESET, LOW);  delay(1);
   digitalWrite(DISPLAY_RESET, HIGH); delay(50);
-
-  for(e=0; e<NUM_EYES; e++) { // Deselect all
-    pinMode(eye[e].cs, OUTPUT);
-    digitalWrite(eye[e].cs, HIGH);
-  }
-  for(e=0; e<NUM_EYES; e++) {
-    digitalWrite(eye[e].cs, LOW); // Select one eye for init
-#if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_) // TFT
-    eye[e].display.initR(INITR_144GREENTAB);
-#else // OLED
-    eye[e].display.begin();
+  // Alternately, all display reset pin(s) could be connected to the
+  // microcontroller reset, in which case DISPLAY_RESET should be set
+  // to -1 or left undefined in config.h.
 #endif
-    if(eye[e].blink.pin >= 0) pinMode(eye[e].blink.pin, INPUT_PULLUP);
+
+  // After all-displays reset, now call init/begin func for each display:
+  for(e=0; e<NUM_EYES; e++) {
+#if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_)
+    eye[e].display->initR(INITR_144GREENTAB); // TFT
+#else
+    eye[e].display->begin();                  // OLED
+#endif
+  }
+
 #ifdef LOGO_TOP_WIDTH
-    // I noticed lots of folks getting right/left eyes flipped, or
-    // installing upside-down, etc.  Logo split across screens may help:
-    eye[e].display.fillScreen(0);
-    eye[e].display.drawBitmap(NUM_EYES*64 - e*128 - 20,
+  // I noticed lots of folks getting right/left eyes flipped, or
+  // installing upside-down, etc.  Logo split across screens may help:
+  for(e=0; e<NUM_EYES; e++) { // Another pass, after all screen inits
+    eye[e].display->fillScreen(0);
+    eye[e].display->drawBitmap(NUM_EYES*64 - e*128 - 20,
       0, logo_top, LOGO_TOP_WIDTH, LOGO_TOP_HEIGHT, 0xFFFF);
-    eye[e].display.drawBitmap(NUM_EYES*64 - e*128 - LOGO_BOTTOM_WIDTH/2,
+    eye[e].display->drawBitmap(NUM_EYES*64 - e*128 - LOGO_BOTTOM_WIDTH/2,
       LOGO_TOP_HEIGHT, logo_bottom, LOGO_BOTTOM_WIDTH, LOGO_BOTTOM_HEIGHT,
       0xFFFF);
-#endif
-    digitalWrite(eye[e].cs, HIGH); // Deselect
   }
-#if defined(BLINK_PIN) && (BLINK_PIN >= 0)
-  pinMode(BLINK_PIN, INPUT_PULLUP);
-#endif
-
-#ifdef LOGO_TOP_WIDTH
   delay(2000); // Pause for screen layout/orientation
 #endif
 
@@ -160,7 +138,7 @@ void setup(void) {
   // L-to-R or R-to-L inner loops.  Just the X coordinate of the iris is
   // then reversed when drawing this eye, so they move the same.  Magic!
 #if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_) // TFT
-  digitalWrite(eye[0].cs , LOW);
+  digitalWrite(eyePins[0].select, LOW);
   digitalWrite(DISPLAY_DC, LOW);
 #ifdef ST77XX_MADCTL
   SPI.transfer(ST77XX_MADCTL); // Current TFT lib
@@ -169,13 +147,15 @@ void setup(void) {
 #endif
   digitalWrite(DISPLAY_DC, HIGH);
   SPI.transfer(0x88); // MADCTL_MY | MADCTL_BGR
-  digitalWrite(eye[0].cs , HIGH);
+  digitalWrite(eyePins[0].select , HIGH);
 #else // OLED
-  eye[0].display.writeCommand(SSD1351_CMD_SETREMAP);
-  eye[0].display.writeData(0x76);
+  eye[0].display->writeCommand(SSD1351_CMD_SETREMAP);
+  eye[0].display->writeData(0x76);
 #endif
 
 #ifdef ARDUINO_ARCH_SAMD
+  // Set up SPI DMA on SAMD boards:
+
   int                dmac_id;
   volatile uint32_t *data_reg;
   if(&PERIPH_SPI == &sercom0) {
@@ -219,23 +199,16 @@ void setup(void) {
     true,               // increment source addr?
     false);             // increment dest addr?
   dma.setCallback(dma_callback);
-#endif
 
-  startTime = millis();
+#endif // End SAMD-specific SPI DMA init
+
+  startTime = millis(); // For frame-rate calculation
 }
 
 
 // EYE-RENDERING FUNCTION --------------------------------------------------
 
-#ifdef ARDUINO_ARCH_SAMD
-#ifdef __SAMD51__
-  SPISettings settings(24000000, MSBFIRST, SPI_MODE0); // SAMD51 max SPI
-#else
-  SPISettings settings(12000000, MSBFIRST, SPI_MODE0); // SAMD21 max SPI
-#endif
-#else
-  SPISettings settings(24000000, MSBFIRST, SPI_MODE0); // Teensy 3.1 max SPI
-#endif
+SPISettings settings(SPI_FREQ, MSBFIRST, SPI_MODE0);
 
 void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
   uint8_t  e,       // Eye array index; 0 or 1 for left/right
@@ -254,17 +227,18 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
   // around automatically from end of rect back to beginning, the region is
   // reset on each frame here in case of an SPI glitch.
   SPI.beginTransaction(settings);
-  digitalWrite(eye[e].cs, LOW);                       // Chip select
+  digitalWrite(eyePins[e].select, LOW);                        // Chip select
 #if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_) // TFT
-  eye[e].display.setAddrWindow(0, 0, 128, 128);
+  eye[e].display->setAddrWindow(0, 0, 128, 128);
 #else // OLED
-  eye[e].display.writeCommand(SSD1351_CMD_SETROW);    // Y range
-  eye[e].display.writeData(0); eye[e].display.writeData(SCREEN_HEIGHT - 1);
-  eye[e].display.writeCommand(SSD1351_CMD_SETCOLUMN); // X range
-  eye[e].display.writeData(0); eye[e].display.writeData(SCREEN_WIDTH  - 1);
-  eye[e].display.writeCommand(SSD1351_CMD_WRITERAM);  // Begin write
+  eye[e].display->writeCommand(SSD1351_CMD_SETROW);    // Y range
+  eye[e].display->writeData(0); eye[e].display->writeData(SCREEN_HEIGHT - 1);
+  eye[e].display->writeCommand(SSD1351_CMD_SETCOLUMN); // X range
+  eye[e].display->writeData(0); eye[e].display->writeData(SCREEN_WIDTH  - 1);
+  eye[e].display->writeCommand(SSD1351_CMD_WRITERAM);  // Begin write
 #endif
-  digitalWrite(DISPLAY_DC, HIGH);                     // Data mode
+  digitalWrite(eyePins[e].select, LOW);                // Re-chip-select
+  digitalWrite(DISPLAY_DC, HIGH);                      // Data mode
   // Now just issue raw 16-bit values for every pixel...
 
   scleraXsave = scleraX; // Save initial X value to reset on each line
@@ -317,7 +291,7 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
        !(KINETISK_SPI0.SR & SPI_SR_TCF)); // Wait for last bit out
 #endif
 
-  digitalWrite(eye[e].cs, HIGH);          // Deselect
+  digitalWrite(eyePins[e].select, HIGH);          // Deselect
   SPI.endTransaction();
 }
 
@@ -454,8 +428,8 @@ void frame( // Process motion for a single frame of left or right eye
 #if defined(BLINK_PIN) && (BLINK_PIN >= 0)
         (digitalRead(BLINK_PIN) == LOW) ||           // blink or wink held...
 #endif
-        ((eye[eyeIndex].blink.pin >= 0) &&
-         digitalRead(eye[eyeIndex].blink.pin) == LOW) )) {
+        ((eyePins[eyeIndex].wink >= 0) &&
+         digitalRead(eyePins[eyeIndex].wink) == LOW) )) {
         // Don't advance state yet -- eye is held closed instead
       } else { // No buttons, or other state...
         if(++eye[eyeIndex].blink.state > DEBLINK) { // Deblinking finished?
@@ -480,8 +454,8 @@ void frame( // Process motion for a single frame of left or right eye
       }
     } else
 #endif
-    if((eye[eyeIndex].blink.pin >= 0) &&
-       (digitalRead(eye[eyeIndex].blink.pin) == LOW)) { // Wink!
+    if((eyePins[eyeIndex].wink >= 0) &&
+       (digitalRead(eyePins[eyeIndex].wink) == LOW)) { // Wink!
       eye[eyeIndex].blink.state     = ENBLINK;
       eye[eyeIndex].blink.startTime = t;
       eye[eyeIndex].blink.duration  = random(45000, 90000);
@@ -503,7 +477,7 @@ void frame( // Process motion for a single frame of left or right eye
   // to appear fixated (converged) at a conversational distance.  Number
   // here was extracted from my posterior and not mathematically based.
   // I suppose one could get all clever with a range sensor, but for now...
-  eyeX += 4;
+  if(NUM_EYES > 1) eyeX += 4;
   if(eyeX > (SCLERA_WIDTH - 128)) eyeX = (SCLERA_WIDTH - 128);
 
   // Eyelids are rendered using a brightness threshold image.  This same

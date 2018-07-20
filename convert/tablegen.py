@@ -1,20 +1,20 @@
 #!/usr/bin/python
 
 # Image converter for 'Uncanny Eyes' project.  Generates tables for
-# eyeData.h file.  Requires Python Imaging Library.  Expects four image
-# files: sclera, iris, upper lid map and lower lid map (defaults will be
-# used if not specified).  Also generates polar coordinate map for iris
-# rendering (pass diameter -- must be an even value -- as 5th argument).
+# eyeData.h file.  Requires Python Imaging Library.  Expects six image
+# files: sclera, iris, upper and lower eyelid map (symmetrical), upper
+# and lower eyelif map (asymmetrical L/R) -- defaults will be used for
+# each if not specified.  Also generates polar coordinate map for iris
+# rendering (pass diameter -- must be an even value -- as 7th argument),
+# pupil is assumed round unless pupilMap.png image is present.
 # Output is to stdout; should be redirected to file for use.
 
 # This is kinda some horrible copy-and-paste code right now for each of
-# the four images...could be improved, but basically does the thing.
+# the images...could be improved, but basically does the thing.
 
 import sys
 import math
 from PIL import Image
-
-columns = 8 # Number of columns in formatted output
 
 # Write hex digit (with some formatting for C array) to stdout
 def outputHex(n, digits):
@@ -32,7 +32,6 @@ def outputHex(n, digits):
 	else:
 		print(" };");              # Cap off table
 
-
 # OPEN AND VALIDATE SCLERA IMAGE FILE --------------------------------------
 
 try:    filename = sys.argv[1]
@@ -45,6 +44,7 @@ pixels = im.load()
 
 # Initialize outputHex() global counters:
 counter = 0                       # Index of next element to generate
+columns = 8                       # Number of columns in formatted output
 column  = columns                 # Current column number in output
 limit   = im.size[0] * im.size[1] # Total # of elements in generated list
 
@@ -61,7 +61,6 @@ for y in range(im.size[1]):
 		outputHex(((p[0] & 0b11111000) << 8) | # Convert 24-bit RGB
 		          ((p[1] & 0b11111100) << 3) | # to 16-bit value w/
 		          ( p[2] >> 3), 4)             # 5/6/5-bit packing
-
 
 # OPEN AND VALIDATE IRIS IMAGE FILE ----------------------------------------
 
@@ -94,11 +93,10 @@ for y in range(im.size[1]):
 		          ((p[1] & 0b11111100) << 3) | # to 16-bit value w/
 		          ( p[2] >> 3), 4)             # 5/6/5-bit packing
 
-
-# OPEN AND VALIDATE UPPER EYELID THRESHOLD MAP -----------------------------
+# OPEN AND VALIDATE UPPER EYELID THRESHOLD MAP (symmetrical) ---------------
 
 try:    filename = sys.argv[3]
-except: filename = "upper.png"
+except: filename = "lid-upper-symmetrical.png"
 im = Image.open(filename)
 if (im.size[0] != 128) or (im.size[1] != 128):
 	sys.stderr.write("Image size must match screen size")
@@ -106,15 +104,18 @@ if (im.size[0] != 128) or (im.size[1] != 128):
 im     = im.convert("L")
 pixels = im.load()
 
-# GENERATE UPPER LID ARRAY -------------------------------------------------
+# GENERATE UPPER LID ARRAY (symmetrical) -----------------------------------
 
 counter = 0
+columns = 12
 column  = columns
 limit   = im.size[0] * im.size[1]
 
 print
 print "#define SCREEN_WIDTH  " + str(im.size[0])
 print "#define SCREEN_HEIGHT " + str(im.size[1])
+print
+print "#ifdef SYMMETRICAL_EYELID"
 print
 
 sys.stdout.write("const uint8_t upper[SCREEN_HEIGHT][SCREEN_WIDTH] = {")
@@ -123,11 +124,10 @@ for y in range(im.size[1]):
 	for x in range(im.size[0]):
 		outputHex(pixels[x, y], 2) # 8-bit value per pixel
 
-
-# OPEN AND VALIDATE LOWER EYELID THRESHOLD MAP -----------------------------
+# OPEN AND VALIDATE LOWER EYELID THRESHOLD MAP (symmetrical) ---------------
 
 try:    filename = sys.argv[4]
-except: filename = "lower.png"
+except: filename = "lid-lower-symmetrical.png"
 im     = Image.open(filename)
 if (im.size[0] != 128) or (im.size[1] != 128):
 	sys.stderr.write("Image size must match screen size")
@@ -135,7 +135,7 @@ if (im.size[0] != 128) or (im.size[1] != 128):
 im     = im.convert("L")
 pixels = im.load()
 
-# GENERATE LOWER LID ARRAY -------------------------------------------------
+# GENERATE LOWER LID ARRAY (symmetrical) -----------------------------------
 
 counter = 0
 column  = columns
@@ -148,27 +148,84 @@ for y in range(im.size[1]):
 	for x in range(im.size[0]):
 		outputHex(pixels[x, y], 2) # 8-bit value per pixel
 
+# OPEN AND VALIDATE UPPER EYELID THRESHOLD MAP (asymmetrical) --------------
+
+try:    filename = sys.argv[5]
+except: filename = "lid-upper.png"
+im = Image.open(filename)
+if (im.size[0] != 128) or (im.size[1] != 128):
+	sys.stderr.write("Image size must match screen size")
+	exit(1)
+im     = im.convert("L")
+pixels = im.load()
+
+# GENERATE UPPER LID ARRAY (asymmetrical) ----------------------------------
+
+counter = 0
+column  = columns
+limit   = im.size[0] * im.size[1]
+
+print
+print "#else"
+print
+
+sys.stdout.write("const uint8_t upper[SCREEN_HEIGHT][SCREEN_WIDTH] = {")
+
+for y in range(im.size[1]):
+	for x in range(im.size[0]):
+		outputHex(pixels[x, y], 2) # 8-bit value per pixel
+
+# OPEN AND VALIDATE LOWER EYELID THRESHOLD MAP (asymmetrical) --------------
+
+try:    filename = sys.argv[6]
+except: filename = "lid-lower.png"
+im     = Image.open(filename)
+if (im.size[0] != 128) or (im.size[1] != 128):
+	sys.stderr.write("Image size must match screen size")
+	exit(1)
+im     = im.convert("L")
+pixels = im.load()
+
+# GENERATE LOWER LID ARRAY (asymmetrical) ----------------------------------
+
+counter = 0
+column  = columns
+limit   = im.size[0] * im.size[1]
+
+print
+sys.stdout.write("const uint8_t lower[SCREEN_HEIGHT][SCREEN_WIDTH] = {")
+
+for y in range(im.size[1]):
+	for x in range(im.size[0]):
+		outputHex(pixels[x, y], 2) # 8-bit value per pixel
 
 # GENERATE POLAR COORDINATE TABLE ------------------------------------------
 
-try:    irisSize = int(sys.argv[5])
+try:    irisSize = int(sys.argv[7])
 except: irisSize = 80
-slitPupil = False
 if irisSize % 2 != 0:
 	sys.stderr.write("Iris diameter must be even value")
 	exit(1)
-if irisSize < 0:
-	irisSize  = -irisSize
-	slitPupil = True
-	filename = "pupilMap.png"     # HACKITY HACK, see notes later
-	im     = Image.open(filename) # OMG so wretched and hacky
+radius      = irisSize / 2
+# For unusual-shaped pupils (dragon, goat, etc.), a precomputed image
+# provides polar distances.  Optional 8th argument is filename (or file
+# 'pupilMap.png' in the local directory) is what's used, otherwise a
+# regular round iris is calculated.
+try:    filename = sys.argv[8]
+except: filename = "pupilMap.png"
+usePupilMap = True
+try:
+	im     = Image.open(filename)
 	if (im.size[0] != irisSize) or (im.size[1] != irisSize):
 		sys.stderr.write("Image size must match iris size")
 		exit(1)
 	im     = im.convert("L")
 	pixels = im.load()
-radius = irisSize / 2
+except:
+	usePupilMap = False
 
+print
+print "#endif // SYMMETRICAL_EYELID"
 print
 print "#define IRIS_WIDTH  " + str(irisSize)
 print "#define IRIS_HEIGHT " + str(irisSize)
@@ -179,6 +236,7 @@ print "#define IRIS_HEIGHT " + str(irisSize)
 # are set to 127).
 
 counter = 0
+columns = 8
 column  = columns
 limit   = irisSize * irisSize
 
@@ -192,14 +250,8 @@ for y in range(irisSize):
 		if(distance >= radius): # Outside circle
 			outputHex(127, 4) # angle = 0, dist = 127
 		else:
-			if slitPupil:
-				# TODO: add magic here
-				# I totally cheated on the dragon eye
-				# included with the demo code -- made a
-				# canned distance bitmap using Illustrator +
-				# Photoshop and use that...but it's rigged
-				# to the bitmap size and isn't a generalized
-				# solution, which is what's needed here.
+			if usePupilMap:
+				# Look up polar coordinates in pupil map image
 				angle     = math.atan2(dy, dx)  # -pi to +pi
 				angle    += math.pi             # 0.0 to 2pi
 				angle    /= (math.pi * 2.0)     # 0.0 to <1.0
