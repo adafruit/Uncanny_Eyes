@@ -7,7 +7,7 @@
 
 // If using a SINGLE EYE, you might want this next line enabled, which
 // uses a simpler "football-shaped" eye that's left/right symmetrical.
-// Default shape includes the carnucle, creating distinct left/right eyes.
+// Default shape includes the caruncle, creating distinct left/right eyes.
 //#define SYMMETRICAL_EYELID
 
 // Enable ONE of these #includes -- HUGE graphics tables for various eyes:
