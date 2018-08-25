@@ -8,7 +8,11 @@
 // If using a SINGLE EYE, you might want this next line enabled, which
 // uses a simpler "football-shaped" eye that's left/right symmetrical.
 // Default shape includes the caruncle, creating distinct left/right eyes.
-//#define SYMMETRICAL_EYELID
+#ifdef ADAFRUIT_HALLOWING // Hallowing, with one eye, does this by default
+  #define SYMMETRICAL_EYELID
+#else                     // Otherwise your choice, standard is asymmetrical
+  //#define SYMMETRICAL_EYELID
+#endif
 
 // Enable ONE of these #includes -- HUGE graphics tables for various eyes:
 #include "graphics/defaultEye.h"    // Standard human-ish hazel eye -OR-
@@ -18,28 +22,42 @@
 //#include "graphics/newtEye.h"     // Eye of newt
 
 // Optional: enable this line for startup logo (screen test/orient):
-#include "graphics/logo.h"
+#if !defined ADAFRUIT_HALLOWING     // Hallowing can't always fit logo+eye
+  #include "graphics/logo.h"        // Otherwise your choice, if it fits
+#endif
 
 // EYE LIST ----------------------------------------------------------------
 
 // This table contains ONE LINE PER EYE.  The table MUST be present with
-// this name and contain ONE OR MORE lines.  Each line contains TWO items:
-// a pin number for the corresponding TFT/OLED display's SELECT line,
-// and a pin number for that eye's "wink" button (or -1 if not used).
+// this name and contain ONE OR MORE lines.  Each line contains THREE items:
+// a pin number for the corresponding TFT/OLED display's SELECT line, a pin
+// pin number for that eye's "wink" button (or -1 if not used), and a screen
+// rotation value (0-3) for that eye.
 
-eyePins_t eyePins[] = {
-  {  9, 0 }, // LEFT EYE display-select and wink pins
-  { 10, 2 }, // RIGHT EYE display-select and wink pins
+eyeInfo_t eyeInfo[] = {
+#ifdef ADAFRUIT_HALLOWING
+  { 39, -1, 2 }, // SINGLE EYE display-select and wink pins, rotate 180
+#else
+  {  9, 0, 0 }, // LEFT EYE display-select and wink pins, no rotation
+  { 10, 2, 0 }, // RIGHT EYE display-select and wink pins, no rotation
+#endif
 };
 
 // DISPLAY HARDWARE SETTINGS (screen type & connections) -------------------
 
-// Enable ONE of these #includes to specify the display type being used
-#include <Adafruit_SSD1351.h>  // OLED display library -OR-
-//#include <Adafruit_ST7735.h> // TFT display library (enable one only)
-
-#define DISPLAY_DC     7       // Data/command pin for ALL displays
-#define DISPLAY_RESET  8       // Reset pin for ALL displays
+#ifdef ADAFRUIT_HALLOWING
+  #include <Adafruit_ST7735.h> // TFT display library
+  #define DISPLAY_DC       38  // Display data/command pin
+  #define DISPLAY_RESET    37  // Display reset pin
+  #define DISPLAY_BACKLIGHT 7
+  #define BACKLIGHT_MAX   128
+#else
+  // Enable ONE of these #includes to specify the display type being used
+  #include <Adafruit_SSD1351.h>  // OLED display library -OR-
+  //#include <Adafruit_ST7735.h> // TFT display library (enable one only)
+  #define DISPLAY_DC        7    // Data/command pin for ALL displays
+  #define DISPLAY_RESET     8    // Reset pin for ALL displays
+#endif
 
 #if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_)
   #define SPI_FREQ 24000000    // TFT: use max SPI (clips to 12 MHz on M0)
@@ -61,7 +79,7 @@ eyePins_t eyePins[] = {
 // if not defined, the pupils will change on their own.
 // BLINK_PIN specifies an input pin for a button (to ground) that will
 // make any/all eyes blink.  If set to -1 or if not defined, the eyes will
-// only blink if AUTOBLINK is defined, or if the eyePins[] table above
+// only blink if AUTOBLINK is defined, or if the eyeInfo[] table above
 // includes wink button settings for each eye.
 
 //#define JOYSTICK_X_PIN A0 // Analog pin for eye horiz pos (else auto)
@@ -69,10 +87,23 @@ eyePins_t eyePins[] = {
 //#define JOYSTICK_X_FLIP   // If defined, reverse stick X axis
 //#define JOYSTICK_Y_FLIP   // If defined, reverse stick Y axis
 #define TRACKING            // If defined, eyelid tracks pupil
-#define IRIS_PIN       A2   // Photocell or potentiometer (else auto iris)
-//#define IRIS_PIN_FLIP     // If defined, reverse reading from dial/photocell
-#define IRIS_SMOOTH         // If enabled, filter input from IRIS_PIN
-#define IRIS_MIN      120   // Clip lower analogRead() range from IRIS_PIN
-#define IRIS_MAX      720   // Clip upper "
-#define BLINK_PIN       1   // Pin for manual blink button (BOTH eyes)
+#define BLINK_PIN         1 // Pin for manual blink button (BOTH eyes)
 #define AUTOBLINK           // If defined, eyes also blink autonomously
+#ifdef ADAFRUIT_HALLOWING
+  #define LIGHT_PIN      A1 // Hallowing light sensor pin
+  #define LIGHT_CURVE  0.33 // Light sensor adjustment curve
+  #define LIGHT_MIN      30 // Minimum useful reading from light sensor
+  #define LIGHT_MAX     980 // Maximum useful reading from sensor
+#else
+  #define LIGHT_PIN      A2 // Photocell or potentiometer (else auto iris)
+//#define LIGHT_PIN_FLIP    // If defined, reverse reading from dial/photocell
+  #define LIGHT_MIN       0 // Lower reading from sensor
+  #define LIGHT_MAX    1023 // Upper reading from sensor
+#endif
+#define IRIS_SMOOTH         // If enabled, filter input from IRIS_PIN
+#if !defined(IRIS_MIN)      // Each eye might have its own MIN/MAX
+  #define IRIS_MIN      120 // Iris size (0-1023) in brightest light
+#endif
+#if !defined(IRIS_MAX)
+  #define IRIS_MAX      720 // Iris size (0-1023) in darkest light
+#endif

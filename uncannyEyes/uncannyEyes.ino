@@ -24,9 +24,10 @@
 #endif
 
 typedef struct {        // Struct is defined before including config.h --
-  int8_t select;        // pin numbers for each eye's screen select line
-  int8_t wink;          // and wink button (or -1 if none)
-} eyePins_t;            // are specified there...
+  int8_t  select;       // pin numbers for each eye's screen select line
+  int8_t  wink;         // and wink button (or -1 if none) specified there,
+  uint8_t rotation;     // also display rotation.
+} eyeInfo_t;
 
 #include "config.h"     // ****** CONFIGURATION IS DONE IN HERE ******
 
@@ -46,7 +47,7 @@ typedef struct {
   uint32_t startTime;   // Time (micros) of last state change
 } eyeBlink;
 
-#define NUM_EYES (sizeof eyePins / sizeof eyePins[0]) // config.h pin list
+#define NUM_EYES (sizeof eyeInfo / sizeof eyeInfo[0]) // config.h pin list
 
 struct {                // One-per-eye structure
   displayType *display; // -> OLED/TFT object
@@ -79,19 +80,25 @@ void setup(void) {
   Serial.begin(115200);
   randomSeed(analogRead(A3)); // Seed random() from floating analog input
 
-  // Initialize eye objects based on eyePins list in config.h:
+#ifdef DISPLAY_BACKLIGHT
+  // Enable backlight pin, initially off
+  pinMode(DISPLAY_BACKLIGHT, OUTPUT);
+  digitalWrite(DISPLAY_BACKLIGHT, LOW);
+#endif
+
+  // Initialize eye objects based on eyeInfo list in config.h:
   for(e=0; e<NUM_EYES; e++) {
-    eye[e].display     = new displayType(eyePins[e].select, DISPLAY_DC, -1);
+    eye[e].display     = new displayType(eyeInfo[e].select, DISPLAY_DC, -1);
     eye[e].blink.state = NOBLINK;
     // If project involves only ONE eye and NO other SPI devices, its
     // select line can be permanently tied to GND and corresponding pin
     // in config.h set to -1.  Best to use it though.
-    if(eyePins[e].select >= 0) {
-      pinMode(eyePins[e].select, OUTPUT);
-      digitalWrite(eyePins[e].select, HIGH); // Deselect them all
+    if(eyeInfo[e].select >= 0) {
+      pinMode(eyeInfo[e].select, OUTPUT);
+      digitalWrite(eyeInfo[e].select, HIGH); // Deselect them all
     }
     // Also set up an individual eye-wink pin if defined:
-    if(eyePins[e].wink >= 0) pinMode(eyePins[e].wink, INPUT_PULLUP);
+    if(eyeInfo[e].wink >= 0) pinMode(eyeInfo[e].wink, INPUT_PULLUP);
   }
 #if defined(BLINK_PIN) && (BLINK_PIN >= 0)
   pinMode(BLINK_PIN, INPUT_PULLUP); // Ditto for all-eyes blink pin
@@ -112,50 +119,88 @@ void setup(void) {
 
   // After all-displays reset, now call init/begin func for each display:
   for(e=0; e<NUM_EYES; e++) {
-#if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_)
-    eye[e].display->initR(INITR_144GREENTAB); // TFT
-#else
-    eye[e].display->begin();                  // OLED
+#if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_) // TFT
+    eye[e].display->initR(INITR_144GREENTAB);
+#else // OLED
+    eye[e].display->begin();
 #endif
+    eye[e].display->setRotation(eyeInfo[e].rotation);
   }
 
-#ifdef LOGO_TOP_WIDTH
+#if defined(LOGO_TOP_WIDTH) || defined(COLOR_LOGO_WIDTH)
   // I noticed lots of folks getting right/left eyes flipped, or
   // installing upside-down, etc.  Logo split across screens may help:
   for(e=0; e<NUM_EYES; e++) { // Another pass, after all screen inits
     eye[e].display->fillScreen(0);
-    eye[e].display->drawBitmap(NUM_EYES*64 - e*128 - 20,
-      0, logo_top, LOGO_TOP_WIDTH, LOGO_TOP_HEIGHT, 0xFFFF);
-    eye[e].display->drawBitmap(NUM_EYES*64 - e*128 - LOGO_BOTTOM_WIDTH/2,
-      LOGO_TOP_HEIGHT, logo_bottom, LOGO_BOTTOM_WIDTH, LOGO_BOTTOM_HEIGHT,
-      0xFFFF);
+    #ifdef LOGO_TOP_WIDTH
+      // Monochrome Adafruit logo is 2 mono bitmaps:
+      eye[e].display->drawBitmap(NUM_EYES*64 - e*128 - 20,
+        0, logo_top, LOGO_TOP_WIDTH, LOGO_TOP_HEIGHT, 0xFFFF);
+      eye[e].display->drawBitmap(NUM_EYES*64 - e*128 - LOGO_BOTTOM_WIDTH/2,
+        LOGO_TOP_HEIGHT, logo_bottom, LOGO_BOTTOM_WIDTH, LOGO_BOTTOM_HEIGHT,
+        0xFFFF);
+    #else
+      // Color sponsor logo is one RGB bitmap:
+      eye[e].display->fillScreen(color_logo[0]);
+      eye[0].display->drawRGBBitmap(
+        (eye[e].display->width()  - COLOR_LOGO_WIDTH ) / 2,
+        (eye[e].display->height() - COLOR_LOGO_HEIGHT) / 2,
+        color_logo, COLOR_LOGO_WIDTH, COLOR_LOGO_HEIGHT);
+    #endif
+    // After logo is drawn
   }
-  delay(2000); // Pause for screen layout/orientation
-#endif
+  #ifdef DISPLAY_BACKLIGHT
+    int i;
+    for(i=0; i<BACKLIGHT_MAX; i++) { // Fade logo in
+      analogWrite(DISPLAY_BACKLIGHT, i);
+      delay(2);
+    }
+    delay(1400); // Pause for screen layout/orientation
+    for(; i>=0; i--) {
+      analogWrite(DISPLAY_BACKLIGHT, i);
+      delay(2);
+    }
+    for(e=0; e<NUM_EYES; e++) { // Clear display(s)
+      eye[e].display->fillScreen(0);
+    }
+    delay(100);
+  #else
+    delay(2000); // Pause for screen layout/orientation
+  #endif // DISPLAY_BACKLIGHT
+#endif // LOGO_TOP_WIDTH
 
   // One of the displays is configured to mirror on the X axis.  Simplifies
   // eyelid handling in the drawEye() function -- no need for distinct
   // L-to-R or R-to-L inner loops.  Just the X coordinate of the iris is
   // then reversed when drawing this eye, so they move the same.  Magic!
 #if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_) // TFT
-  digitalWrite(eyePins[0].select, LOW);
+  const uint8_t mirrorTFT[]  = { 0x88, 0x28, 0x48, 0xE8 }; // Mirror+rotate
+  digitalWrite(eyeInfo[0].select, LOW);
   digitalWrite(DISPLAY_DC, LOW);
-#ifdef ST77XX_MADCTL
-  SPI.transfer(ST77XX_MADCTL); // Current TFT lib
-#else
-  SPI.transfer(ST7735_MADCTL); // Older TFT lib
-#endif
+  #ifdef ST77XX_MADCTL
+    SPI.transfer(ST77XX_MADCTL); // Current TFT lib
+  #else
+    SPI.transfer(ST7735_MADCTL); // Older TFT lib
+  #endif
   digitalWrite(DISPLAY_DC, HIGH);
-  SPI.transfer(0x88); // MADCTL_MY | MADCTL_BGR
-  digitalWrite(eyePins[0].select , HIGH);
+  SPI.transfer(mirrorTFT[eyeInfo[0].rotation & 3]);
+  digitalWrite(eyeInfo[0].select , HIGH);
 #else // OLED
-  eye[0].display->writeCommand(SSD1351_CMD_SETREMAP);
-  eye[0].display->writeData(0x76);
+  const uint8_t rotateOLED[] = { 0x74, 0x77, 0x66, 0x65 },
+                mirrorOLED[] = { 0x76, 0x67, 0x64, 0x75 }; // Mirror+rotate
+  // If OLED, loop through ALL eyes and set up remap register
+  // from either mirrorOLED[] (first eye) or rotateOLED[] (others).
+  // The OLED library doesn't normally use the remap reg (TFT does).
+  for(e=0; e<NUM_EYES; e++) {
+    eye[e].display->writeCommand(SSD1351_CMD_SETREMAP);
+    eye[e].display->writeData(e ?
+      rotateOLED[eyeInfo[e].rotation & 3] :
+      mirrorOLED[eyeInfo[e].rotation & 3]);
+  }
 #endif
 
 #ifdef ARDUINO_ARCH_SAMD
   // Set up SPI DMA on SAMD boards:
-
   int                dmac_id;
   volatile uint32_t *data_reg;
   if(&PERIPH_SPI == &sercom0) {
@@ -202,6 +247,10 @@ void setup(void) {
 
 #endif // End SAMD-specific SPI DMA init
 
+#ifdef DISPLAY_BACKLIGHT
+  analogWrite(DISPLAY_BACKLIGHT, BACKLIGHT_MAX);
+#endif
+
   startTime = millis(); // For frame-rate calculation
 }
 
@@ -227,7 +276,7 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
   // around automatically from end of rect back to beginning, the region is
   // reset on each frame here in case of an SPI glitch.
   SPI.beginTransaction(settings);
-  digitalWrite(eyePins[e].select, LOW);                        // Chip select
+  digitalWrite(eyeInfo[e].select, LOW);                        // Chip select
 #if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_) // TFT
   eye[e].display->setAddrWindow(0, 0, 128, 128);
 #else // OLED
@@ -237,7 +286,7 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
   eye[e].display->writeData(0); eye[e].display->writeData(SCREEN_WIDTH  - 1);
   eye[e].display->writeCommand(SSD1351_CMD_WRITERAM);  // Begin write
 #endif
-  digitalWrite(eyePins[e].select, LOW);                // Re-chip-select
+  digitalWrite(eyeInfo[e].select, LOW);                // Re-chip-select
   digitalWrite(DISPLAY_DC, HIGH);                      // Data mode
   // Now just issue raw 16-bit values for every pixel...
 
@@ -291,7 +340,7 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
        !(KINETISK_SPI0.SR & SPI_SR_TCF)); // Wait for last bit out
 #endif
 
-  digitalWrite(eyePins[e].select, HIGH);          // Deselect
+  digitalWrite(eyeInfo[e].select, HIGH);          // Deselect
   SPI.endTransaction();
 }
 
@@ -428,8 +477,8 @@ void frame( // Process motion for a single frame of left or right eye
 #if defined(BLINK_PIN) && (BLINK_PIN >= 0)
         (digitalRead(BLINK_PIN) == LOW) ||           // blink or wink held...
 #endif
-        ((eyePins[eyeIndex].wink >= 0) &&
-         digitalRead(eyePins[eyeIndex].wink) == LOW) )) {
+        ((eyeInfo[eyeIndex].wink >= 0) &&
+         digitalRead(eyeInfo[eyeIndex].wink) == LOW) )) {
         // Don't advance state yet -- eye is held closed instead
       } else { // No buttons, or other state...
         if(++eye[eyeIndex].blink.state > DEBLINK) { // Deblinking finished?
@@ -454,8 +503,8 @@ void frame( // Process motion for a single frame of left or right eye
       }
     } else
 #endif
-    if((eyePins[eyeIndex].wink >= 0) &&
-       (digitalRead(eyePins[eyeIndex].wink) == LOW)) { // Wink!
+    if((eyeInfo[eyeIndex].wink >= 0) &&
+       (digitalRead(eyeInfo[eyeIndex].wink) == LOW)) { // Wink!
       eye[eyeIndex].blink.state     = ENBLINK;
       eye[eyeIndex].blink.startTime = t;
       eye[eyeIndex].blink.duration  = random(45000, 90000);
@@ -522,7 +571,7 @@ void frame( // Process motion for a single frame of left or right eye
 
 // AUTONOMOUS IRIS SCALING (if no photocell or dial) -----------------------
 
-#if !defined(IRIS_PIN) || (IRIS_PIN < 0)
+#if !defined(LIGHT_PIN) || (LIGHT_PIN < 0)
 
 // Autonomous iris motion uses a fractal behavior to similate both the major
 // reaction of the eye plus the continuous smaller adjustments that occur.
@@ -555,22 +604,30 @@ void split( // Subdivides motion path into two sub-paths w/randimization
   }
 }
 
-#endif // !IRIS_PIN
+#endif // !LIGHT_PIN
 
 
 // MAIN LOOP -- runs continuously after setup() ----------------------------
 
 void loop() {
 
-#if defined(IRIS_PIN) && (IRIS_PIN >= 0) // Interactive iris
+#if defined(LIGHT_PIN) && (LIGHT_PIN >= 0) // Interactive iris
 
-  uint16_t v = analogRead(IRIS_PIN);       // Raw dial/photocell reading
-#ifdef IRIS_PIN_FLIP
-  v = 1023 - v;
+  int16_t v = analogRead(LIGHT_PIN);       // Raw dial/photocell reading
+#ifdef LIGHT_PIN_FLIP
+  v = 1023 - v;                            // Reverse reading from sensor
 #endif
-  v = map(v, 0, 1023, IRIS_MIN, IRIS_MAX); // Scale to iris range
+  if(v < LIGHT_MIN)      v = LIGHT_MIN;  // Clamp light sensor range
+  else if(v > LIGHT_MAX) v = LIGHT_MAX;
+  v -= LIGHT_MIN;  // 0 to (LIGHT_MAX - LIGHT_MIN)
+#ifdef LIGHT_CURVE  // Apply gamma curve to sensor input?
+  v = (int16_t)(pow((double)v / (double)(LIGHT_MAX - LIGHT_MIN),
+    LIGHT_CURVE) * (double)(LIGHT_MAX - LIGHT_MIN));
+#endif
+  // And scale to iris range (IRIS_MAX is size at LIGHT_MIN)
+  v = map(v, 0, (LIGHT_MAX - LIGHT_MIN), IRIS_MAX, IRIS_MIN);
 #ifdef IRIS_SMOOTH // Filter input (gradual motion)
-  static uint16_t irisValue = (IRIS_MIN + IRIS_MAX) / 2;
+  static int16_t irisValue = (IRIS_MIN + IRIS_MAX) / 2;
   irisValue = ((irisValue * 15) + v) / 16;
   frame(irisValue);
 #else // Unfiltered (immediate motion)
@@ -583,5 +640,5 @@ void loop() {
   split(oldIris, newIris, micros(), 10000000L, IRIS_MAX - IRIS_MIN);
   oldIris = newIris;
 
-#endif // IRIS_PIN
+#endif // LIGHT_PIN
 }
