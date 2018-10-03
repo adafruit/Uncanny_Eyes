@@ -15,11 +15,12 @@
 #endif
 
 // Enable ONE of these #includes -- HUGE graphics tables for various eyes:
-#include "graphics/defaultEye.h"    // Standard human-ish hazel eye -OR-
-//#include "graphics/dragonEye.h"   // Slit pupil fiery dragon/demon eye -OR-
-//#include "graphics/noScleraEye.h" // Large iris, no sclera -OR-
-//#include "graphics/goatEye.h"     // Horizontal pupil goat/Krampus eye -OR-
-//#include "graphics/newtEye.h"     // Eye of newt
+#include "graphics/defaultEye.h"      // Standard human-ish hazel eye -OR-
+//#include "graphics/dragonEye.h"     // Slit pupil fiery dragon/demon eye -OR-
+//#include "graphics/noScleraEye.h"   // Large iris, no sclera -OR-
+//#include "graphics/goatEye.h"       // Horizontal pupil goat/Krampus eye -OR-
+//#include "graphics/newtEye.h"       // Eye of newt -OR-
+//#include "graphics/terminatorEye.h" // Git to da choppah!
 
 // Optional: enable this line for startup logo (screen test/orient):
 #if !defined ADAFRUIT_HALLOWING     // Hallowing can't always fit logo+eye

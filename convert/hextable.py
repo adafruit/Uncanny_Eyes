@@ -56,7 +56,7 @@ class HexTable:
         """
         'Recycle' an existing HexTable to start a new one with the same
         number of columns and digits (and item count, if passed).
-        @param count Expected number of elements in the array to be
+        @param count Expected number of elements in the new array to be
                      generated. Default of 0 means use same count as before.
         """
         if count > 0:
