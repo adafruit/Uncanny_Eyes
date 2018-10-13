@@ -14,4 +14,5 @@ Folder 'convert' contains Python sketch for generating graphics header files. Re
 To build you need to go to your library manager and install:
 
 Adafruit GFX Library
+
 Adafruit Zero DMA Library
