@@ -10,3 +10,9 @@ Teensy 3.x w/OLED screens: use 72 MHz board speed -- 96 MHz requires throttling 
 Directory 'uncannyEyes' contains Arduino sketch for PJRC Teensy 3.1 & Adafruit M0 & M4. 'graphics' subfolder has various eye designs, as #include-able header files.
 
 Folder 'convert' contains Python sketch for generating graphics header files. Requires Python Imaging Library. Example images are also in this directory.
+
+To build you need to go to your library manager and install:
+
+Adafruit GFX Library
+
+Adafruit Zero DMA Library
