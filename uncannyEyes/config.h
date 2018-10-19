@@ -52,6 +52,9 @@ eyeInfo_t eyeInfo[] = {
   #define DISPLAY_RESET    37  // Display reset pin
   #define DISPLAY_BACKLIGHT 7
   #define BACKLIGHT_MAX   128
+  //#define SYNCPIN          A2  // I2C sync if set, GND this pin on receiver
+  //#define SYNCADDR       0x08  // I2C address of receiver
+                               // (Try disabling SYMMETRICAL_EYELID then)
 #else
   // Enable ONE of these #includes to specify the display type being used
   #include <Adafruit_SSD1351.h>  // OLED display library -OR-

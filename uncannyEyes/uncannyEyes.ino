@@ -71,11 +71,47 @@ struct {                // One-per-eye structure
 
 uint32_t startTime;  // For FPS indicator
 
+#if defined(SYNCPIN) && (SYNCPIN >= 0)
+#include <Wire.h>
+// If two boards are synchronized over I2C, this struct is passed from one
+// to other. No device-independent packing & unpacking is performed...both
+// boards are expected to be the same architecture & endianism.
+struct {
+  uint32_t iScale;  // These are basically the same arguments as
+  uint8_t  scleraX; // drawEye() expects, explained in that function.
+  uint8_t  scleraY;
+  uint8_t  uT;
+  uint8_t  lT;
+} syncStruct;
+
+void wireCallback(int n) {
+  if(n == sizeof syncStruct) {
+    // Read 'n' bytes from I2C into syncStruct
+    uint8_t *ptr = (uint8_t *)&syncStruct;
+    for(uint8_t i=0; i < sizeof syncStruct; i++) {
+      ptr[i] = Wire.read();
+    }
+  }
+}
+
+bool receiver = false;
+#endif // SYNCPIN
 
 // INITIALIZATION -- runs once at startup ----------------------------------
 
 void setup(void) {
   uint8_t e; // Eye index, 0 to NUM_EYES-1
+
+#if defined(SYNCPIN) && (SYNCPIN >= 0) // If using I2C sync...
+  pinMode(SYNCPIN, INPUT_PULLUP);      // Check for jumper to ground
+  if(!digitalRead(SYNCPIN)) {          // If there...
+    receiver = true;                   // Set this one up as receiver
+    Wire.begin(SYNCADDR);
+    Wire.onReceive(wireCallback);
+  } else {
+    Wire.begin();                      // Else set up as sender
+  }
+#endif
 
   Serial.begin(115200);
   randomSeed(analogRead(A3)); // Seed random() from floating analog input
@@ -173,30 +209,36 @@ void setup(void) {
   // eyelid handling in the drawEye() function -- no need for distinct
   // L-to-R or R-to-L inner loops.  Just the X coordinate of the iris is
   // then reversed when drawing this eye, so they move the same.  Magic!
+#if defined(SYNCPIN) && (SYNCPIN >= 0)
+  if(receiver) {
+#endif
 #if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_) // TFT
-  const uint8_t mirrorTFT[]  = { 0x88, 0x28, 0x48, 0xE8 }; // Mirror+rotate
-  digitalWrite(eyeInfo[0].select, LOW);
-  digitalWrite(DISPLAY_DC, LOW);
-  #ifdef ST77XX_MADCTL
-    SPI.transfer(ST77XX_MADCTL); // Current TFT lib
-  #else
-    SPI.transfer(ST7735_MADCTL); // Older TFT lib
-  #endif
-  digitalWrite(DISPLAY_DC, HIGH);
-  SPI.transfer(mirrorTFT[eyeInfo[0].rotation & 3]);
-  digitalWrite(eyeInfo[0].select , HIGH);
-#else // OLED
-  const uint8_t rotateOLED[] = { 0x74, 0x77, 0x66, 0x65 },
-                mirrorOLED[] = { 0x76, 0x67, 0x64, 0x75 }; // Mirror+rotate
-  // If OLED, loop through ALL eyes and set up remap register
-  // from either mirrorOLED[] (first eye) or rotateOLED[] (others).
-  // The OLED library doesn't normally use the remap reg (TFT does).
-  for(e=0; e<NUM_EYES; e++) {
-    eye[e].display->writeCommand(SSD1351_CMD_SETREMAP);
-    eye[e].display->writeData(e ?
-      rotateOLED[eyeInfo[e].rotation & 3] :
-      mirrorOLED[eyeInfo[e].rotation & 3]);
-  }
+    const uint8_t mirrorTFT[]  = { 0x88, 0x28, 0x48, 0xE8 }; // Mirror+rotate
+    digitalWrite(eyeInfo[0].select, LOW);
+    digitalWrite(DISPLAY_DC, LOW);
+    #ifdef ST77XX_MADCTL
+      SPI.transfer(ST77XX_MADCTL); // Current TFT lib
+    #else
+      SPI.transfer(ST7735_MADCTL); // Older TFT lib
+    #endif
+    digitalWrite(DISPLAY_DC, HIGH);
+    SPI.transfer(mirrorTFT[eyeInfo[0].rotation & 3]);
+    digitalWrite(eyeInfo[0].select , HIGH);
+  #else // OLED
+    const uint8_t rotateOLED[] = { 0x74, 0x77, 0x66, 0x65 },
+                  mirrorOLED[] = { 0x76, 0x67, 0x64, 0x75 }; // Mirror+rotate
+    // If OLED, loop through ALL eyes and set up remap register
+    // from either mirrorOLED[] (first eye) or rotateOLED[] (others).
+    // The OLED library doesn't normally use the remap reg (TFT does).
+    for(e=0; e<NUM_EYES; e++) {
+      eye[e].display->writeCommand(SSD1351_CMD_SETREMAP);
+      eye[e].display->writeData(e ?
+        rotateOLED[eyeInfo[e].rotation & 3] :
+        mirrorOLED[eyeInfo[e].rotation & 3]);
+    }
+#endif
+#if defined(SYNCPIN) && (SYNCPIN >= 0)
+  } // Don't mirror receiver screen
 #endif
 
 #ifdef ARDUINO_ARCH_SAMD
@@ -272,6 +314,31 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
   uint16_t p, a;
   uint32_t d;
 
+#if defined(SYNCPIN) && (SYNCPIN >= 0)
+  if(receiver) {
+    // Overwrite arguments with values in syncStruct.  Disable interrupts
+    // briefly so new data can't overwrite the struct in mid-parse.
+    noInterrupts();
+    iScale  = syncStruct.iScale;
+    // Screen is mirrored, this 'de-mirrors' the eye X direction
+    scleraX = SCLERA_WIDTH - 1 - SCREEN_WIDTH - syncStruct.scleraX;
+    scleraY = syncStruct.scleraY;
+    uT      = syncStruct.uT;
+    lT      = syncStruct.lT;
+    interrupts();
+  } else {
+    // Stuff arguments into syncStruct and send to receiver
+    syncStruct.iScale  = iScale;
+    syncStruct.scleraX = scleraX;
+    syncStruct.scleraY = scleraY;
+    syncStruct.uT      = uT;
+    syncStruct.lT      = lT;
+    Wire.beginTransmission(SYNCADDR);
+    Wire.write((char *)&syncStruct, sizeof syncStruct);
+    Wire.endTransmission();
+  }
+#endif
+
   // Set up raw pixel dump to entire screen.  Although such writes can wrap
   // around automatically from end of rect back to beginning, the region is
   // reset on each frame here in case of an SPI glitch.
@@ -343,7 +410,6 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
   digitalWrite(eyeInfo[e].select, HIGH);          // Deselect
   SPI.endTransaction();
 }
-
 
 // EYE ANIMATION -----------------------------------------------------------
 
@@ -568,7 +634,6 @@ void frame( // Process motion for a single frame of left or right eye
   drawEye(eyeIndex, iScale, eyeX, eyeY, n, lThreshold);
 }
 
-
 // AUTONOMOUS IRIS SCALING (if no photocell or dial) -----------------------
 
 #if !defined(LIGHT_PIN) || (LIGHT_PIN < 0)
@@ -605,7 +670,6 @@ void split( // Subdivides motion path into two sub-paths w/randimization
 }
 
 #endif // !LIGHT_PIN
-
 
 // MAIN LOOP -- runs continuously after setup() ----------------------------
 
