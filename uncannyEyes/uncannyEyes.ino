@@ -77,12 +77,13 @@ uint32_t startTime;  // For FPS indicator
 // to other. No device-independent packing & unpacking is performed...both
 // boards are expected to be the same architecture & endianism.
 struct {
-  uint32_t iScale;  // These are basically the same arguments as
+  uint16_t iScale;  // These are basically the same arguments as
   uint8_t  scleraX; // drawEye() expects, explained in that function.
   uint8_t  scleraY;
   uint8_t  uT;
   uint8_t  lT;
-} syncStruct;
+} syncStruct = { 512,
+  (SCLERA_WIDTH-SCREEN_WIDTH)/2, (SCLERA_HEIGHT-SCREEN_HEIGHT)/2, 0, 0 };
 
 void wireCallback(int n) {
   if(n == sizeof syncStruct) {
@@ -303,7 +304,7 @@ SPISettings settings(SPI_FREQ, MSBFIRST, SPI_MODE0);
 
 void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
   uint8_t  e,       // Eye array index; 0 or 1 for left/right
-  uint32_t iScale,  // Scale factor for iris
+  uint16_t iScale,  // Scale factor for iris (0-1023)
   uint8_t  scleraX, // First pixel X offset into sclera image
   uint8_t  scleraY, // First pixel Y offset into sclera image
   uint8_t  uT,      // Upper eyelid threshold value
@@ -338,6 +339,9 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
     Wire.endTransmission();
   }
 #endif
+
+  uint8_t  irisThreshold = (128 * (1023 - iScale) + 512) / 1024;
+  uint32_t irisScale     = IRIS_MAP_HEIGHT * 65536 / irisThreshold;
 
   // Set up raw pixel dump to entire screen.  Although such writes can wrap
   // around automatically from end of rect back to beginning, the region is
@@ -374,8 +378,9 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
         p = sclera[scleraY][scleraX];
       } else {                                          // Maybe iris...
         p = polar[irisY][irisX];                        // Polar angle/dist
-        d = (iScale * (p & 0x7F)) / 128;                // Distance (Y)
-        if(d < IRIS_MAP_HEIGHT) {                       // Within iris area
+        d = p & 0x7F;                                   // Distance from edge (0-127)
+        if(d < irisThreshold) {                         // Within scaled iris area
+          d = d * irisScale / 65536;                    // d scaled to iris image height
           a = (IRIS_MAP_WIDTH * (p >> 7)) / 512;        // Angle (X)
           p = iris[d][a];                               // Pixel = iris
         } else {                                        // Not in iris
@@ -578,10 +583,6 @@ void frame( // Process motion for a single frame of left or right eye
   }
 
   // Process motion, blinking and iris scale into renderable values
-
-  // Iris scaling: remap from 0-1023 input to iris map height pixel units
-  iScale = ((IRIS_MAP_HEIGHT + 1) * 1024) /
-           (1024 - (iScale * (IRIS_MAP_HEIGHT - 1) / IRIS_MAP_HEIGHT));
 
   // Scale eye X/Y positions (0-1023) to pixel units used by drawEye()
   eyeX = map(eyeX, 0, 1023, 0, SCLERA_WIDTH  - 128);
