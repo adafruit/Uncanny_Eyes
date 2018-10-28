@@ -22,6 +22,30 @@
 #ifdef ARDUINO_ARCH_SAMD
   #include <Adafruit_ZeroDMA.h>
 #endif
+#include <Adafruit_LIS3DH.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_FreeTouch.h>
+#include <Adafruit_NeoPixel.h>
+
+// 2018 additions:
+// * Instantiate an instance of the accelerometer sensor
+// * Instantiate capacitive touch sensors
+// * Instantiate the NeoPixel strip
+
+Adafruit_LIS3DH lis = Adafruit_LIS3DH();
+
+Adafruit_FreeTouch qt_1 = Adafruit_FreeTouch(A2, OVERSAMPLE_4, RESISTOR_50K, FREQ_MODE_NONE);
+Adafruit_FreeTouch qt_2 = Adafruit_FreeTouch(A3, OVERSAMPLE_4, RESISTOR_50K, FREQ_MODE_NONE);
+Adafruit_FreeTouch qt_3 = Adafruit_FreeTouch(A4, OVERSAMPLE_4, RESISTOR_50K, FREQ_MODE_NONE);
+Adafruit_FreeTouch qt_4 = Adafruit_FreeTouch(A5, OVERSAMPLE_4, RESISTOR_50K, FREQ_MODE_NONE);
+
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(30, 4, NEO_GRB + NEO_KHZ800);
+
+const int stripBrightnessMin = 2; // Minimum for the strip / normal brightness
+const int stripBrightnessMax = 50; // Max brightness we want to to go for the strip
+
+
+
 
 typedef struct {        // Struct is defined before including config.h --
   int8_t  select;       // pin numbers for each eye's screen select line
@@ -77,7 +101,7 @@ uint32_t startTime;  // For FPS indicator
 void setup(void) {
   uint8_t e; // Eye index, 0 to NUM_EYES-1
 
-  Serial.begin(115200);
+  Serial.begin(9600);
   randomSeed(analogRead(A3)); // Seed random() from floating analog input
 
 #ifdef DISPLAY_BACKLIGHT
@@ -251,6 +275,33 @@ void setup(void) {
   analogWrite(DISPLAY_BACKLIGHT, BACKLIGHT_MAX);
 #endif
 
+  // 2018 code
+  // * Start the accelorometer
+  // * Start the capacitive touch sensors
+  // * Start the NeoPixel strip
+ 
+  if (! lis.begin(0x18) && ! lis.begin(0x19)) {
+    Serial.println("Couldnt start lis3dh");
+    while (1);
+  }
+  Serial.println("LIS3DH found!");
+  
+  lis.setRange(LIS3DH_RANGE_4_G);   // 2, 4, 8 or 16 G!
+  lis.setClick(1, 80);
+  
+  if (! qt_1.begin())  
+    Serial.println("Failed to begin qt on pin A2");
+  if (! qt_2.begin())  
+    Serial.println("Failed to begin qt on pin A3");
+  if (! qt_3.begin())  
+    Serial.println("Failed to begin qt on pin A4");
+  if (! qt_4.begin())  
+    Serial.println("Failed to begin qt on pin A5");
+
+  strip.begin();
+  strip.setBrightness(stripBrightnessMin);
+  strip.show(); // Initialize all pixels to 'off'
+  
   startTime = millis(); // For frame-rate calculation
 }
 
@@ -378,7 +429,9 @@ void frame( // Process motion for a single frame of left or right eye
 
   if(!(++frames & 255)) { // Every 256 frames...
     uint32_t elapsed = (millis() - startTime) / 1000;
-    if(elapsed) Serial.println(frames / elapsed); // Print FPS
+    if(elapsed) {
+      // Serial.println(frames / elapsed); // Print FPS
+    }
   }
 
   if(++eyeIndex >= NUM_EYES) eyeIndex = 0; // Cycle through eyes, 1 per call
@@ -606,6 +659,113 @@ void split( // Subdivides motion path into two sub-paths w/randimization
 
 #endif // !LIGHT_PIN
 
+const int kframeRateMillis30fps = (int) 1000 / 30;
+const int kframeRateMillis60fps = (int) 1000 / 60;
+const int kframeRateMillis120fps = (int) 1000 / 120;
+int frameRateMillis = kframeRateMillis30fps;
+
+// Input a value 0 to 255 to get a color value.
+// The colours are a transition r - g - b - back to r.
+uint32_t Wheel(byte WheelPos) {
+  if(WheelPos < 85) {
+   return strip.Color(WheelPos * 3, 255 - WheelPos * 3, 0);
+  } else if(WheelPos < 170) {
+   WheelPos -= 85;
+   return strip.Color(255 - WheelPos * 3, 0, WheelPos * 3);
+  } else {
+   WheelPos -= 170;
+   return strip.Color(0, WheelPos * 3, 255 - WheelPos * 3);
+  }
+}
+
+// 2018 additions
+
+const int stripBrightnessStartMax = 50; // Maximum starting brightness for NeoPixel strip
+const int stripBrightnessStartMin = 25; // Minimum starting brightness
+
+int stripBrightnessCountDownStart = stripBrightnessStartMax; // Start of the fade
+int stripBrightnessCountDown = stripBrightnessStartMax; // Current value of brightness / fade
+
+// Animate the strip's colors and adjust the brightness if currently fading from
+// bright to dim
+
+void stripAnimationLoop()
+{
+  static unsigned long lastMillis = 0;
+  static uint8_t j = 0;
+  unsigned long currentMillis = millis();
+
+  if (currentMillis - lastMillis > frameRateMillis) {
+    for(int32_t i=0; i< strip.numPixels(); i++) {
+      //strip.setPixelColor(numPix, strip.Color(r, g, b);
+       strip.setPixelColor(i, Wheel(((i * 256 / strip.numPixels()) + j*5) & 255));
+    }
+    j++;
+    
+    strip.setBrightness(stripBrightnessCountDown);
+    
+    if (stripBrightnessCountDown > stripBrightnessMin) {
+      stripBrightnessCountDown -= 3;
+      if (stripBrightnessCountDown < stripBrightnessMin) {
+        stripBrightnessCountDown = stripBrightnessMin;
+      }
+    }
+    
+    strip.show();
+    lastMillis = millis();
+  }
+}
+
+unsigned long lastAccelCheck = 0; // last time we checked the accelorometer
+const int kcheckAccel = 20; // how often (in ms) to check the accelorometer
+
+double lastMovementMin = 1000000.0; // in accelorometer window, min value
+double lastMovementMax = -1000000.0; // in accelorometer window, max value
+const double klastMovementThreshold = 3.0; // how much movement until interesting
+unsigned long lastAccelStepCheck = 0; // last time we checked for a step motion
+const int kcheckAccelStep = 500; // how often to check for a step
+
+// check the movement and see if there's been a step motion
+
+void checkMovement()
+{
+  unsigned long millisNow = millis();
+
+  if ((millisNow - lastAccelCheck) > kcheckAccel) {
+    sensors_event_t event; 
+    lis.getEvent(&event);
+
+    lastAccelCheck = millisNow;
+    
+    if (event.acceleration.x > lastMovementMax) {
+      lastMovementMax = event.acceleration.x;
+    }
+    if (event.acceleration.x < lastMovementMin) {
+      lastMovementMin = event.acceleration.x;
+    }
+  }
+
+  if ((millisNow - lastAccelStepCheck) > kcheckAccelStep) {
+    double difference;
+    
+    lastAccelStepCheck = millisNow;
+    difference = abs(lastMovementMax - lastMovementMin);
+
+    if (difference > klastMovementThreshold) {
+      startStepResponse();
+    }
+    
+    lastMovementMax = -100000.0;
+    lastMovementMin =  100000.0;
+  }
+}
+
+// Setup state for starting response to a step
+
+void startStepResponse() {
+  stripBrightnessCountDown = stripBrightnessMax;
+}
+
 
 // MAIN LOOP -- runs continuously after setup() ----------------------------
 
@@ -641,4 +801,39 @@ void loop() {
   oldIris = newIris;
 
 #endif // LIGHT_PIN
+
+  // 2018 code
+  // * Look for a tap / click
+  // * Check capacitive touch buttons
+  // * Check for movement
+  // * Kick off next step in NeoPixel animation
+  
+  uint8_t click = lis.getClick();
+  if (click & 0x30) {
+    startStepResponse();
+  }
+
+  if (qt_1.measure() > 700) {
+    //Serial.println("QT_1 pressed.");
+    stripBrightnessCountDownStart = (stripBrightnessCountDownStart == stripBrightnessStartMax) ?
+                                      stripBrightnessStartMin :
+                                      stripBrightnessStartMax;
+  }
+
+  if (qt_4.measure() > 700) {
+    //Serial.println("QT_4 pressed.");
+    frameRateMillis = (frameRateMillis == kframeRateMillis120fps) ?
+                        kframeRateMillis30fps :
+                        kframeRateMillis120fps;
+  }
+
+  if (qt_2.measure() > 700 || qt_3.measure() > 700) {
+    //Serial.println("QT_2 or 3 pressed.");
+    frameRateMillis = kframeRateMillis60fps;
+  }
+
+  checkMovement();
+  
+  stripAnimationLoop();
+    
 }
