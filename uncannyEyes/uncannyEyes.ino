@@ -691,7 +691,9 @@ void loop() {
   v = map(v, 0, (LIGHT_MAX - LIGHT_MIN), IRIS_MAX, IRIS_MIN);
 #ifdef IRIS_SMOOTH // Filter input (gradual motion)
   static int16_t irisValue = (IRIS_MIN + IRIS_MAX) / 2;
-  irisValue = ((irisValue * 15) + v) / 16;
+  irisValue = (v < irisValue ?
+               ((irisValue * 3) + v) / 4 :
+               ((irisValue * 31) + v) / 32);
   frame(irisValue);
 #else // Unfiltered (immediate motion)
   frame(v);
