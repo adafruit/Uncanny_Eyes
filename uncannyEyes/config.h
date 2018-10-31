@@ -98,9 +98,18 @@ eyeInfo_t eyeInfo[] = {
 #define AUTOBLINK           // If defined, eyes also blink autonomously
 #ifdef ADAFRUIT_HALLOWING
   #define LIGHT_PIN      A1 // Hallowing light sensor pin
-  #define LIGHT_CURVE  0.33 // Light sensor adjustment curve
-  #define LIGHT_MIN      30 // Minimum useful reading from light sensor
-  #define LIGHT_MAX     980 // Maximum useful reading from sensor
+  // Bringing in the necessary math functions to do a light sensor
+  // curve can be a strong impact (about 50k), and easily get you over
+  // the 256k flash limit of a Hallowing if you have new code.
+  //#define LIGHT_CURVE  0.33 // Light sensor adjustment curve
+  // If you don't need close precision, you can use FAKE_LIGHT_CURVE
+  // instead, which approximates a (hard-coded) 0.33 curve.
+  #define FAKE_LIGHT_CURVE
+  // The Hallowing's light sensor will range from 0 to 980, but almost
+  // all of it is in the lower end.  In a bright room under a desk lamp,
+  // it still only goes to 50 or so.
+  #define LIGHT_MIN       0 // Minimum useful reading from light sensor
+  #define LIGHT_MAX      48 // Maximum useful reading from sensor
 #else
   #define LIGHT_PIN      A2 // Photocell or potentiometer (else auto iris)
 //#define LIGHT_PIN_FLIP    // If defined, reverse reading from dial/photocell

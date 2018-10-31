@@ -631,6 +631,23 @@ void loop() {
 #ifdef LIGHT_CURVE  // Apply gamma curve to sensor input?
   v = (int16_t)(pow((double)v / (double)(LIGHT_MAX - LIGHT_MIN),
     LIGHT_CURVE) * (double)(LIGHT_MAX - LIGHT_MIN));
+#elif defined(FAKE_LIGHT_CURVE)
+  // This approximates a cube root, but with cheap linear
+  // computations.  One way to do this would be with the binomial
+  // series expansion, but that has a serious bias near x=0 unless you
+  // have lots of terms (more than we want).  I don't know of another
+  // Taylor series expansion with integer exponents (which we need to
+  // avoid calling pow).  Instead, we do this with a piecewise linear
+  // approximation to a cube root (over vd=[0,1]).
+  float vd = (float)v / (float)(LIGHT_MAX - LIGHT_MIN);
+  float vc =
+      vd <= 0.0625 ? 6.34960 * vd :
+      vd <= 0.125  ? 1.65040 * vd + 0.293701 :
+      vd <= 0.25   ? 1.03968 * vd + 0.370039 :
+      vd <= 0.5    ? 0.65496 * vd + 0.466221 :
+      /* else */     0.41260 * vd + 0.587401;
+  v = vc * (LIGHT_MAX - LIGHT_MIN);
+#endif
 #endif
   // And scale to iris range (IRIS_MAX is size at LIGHT_MIN)
   v = map(v, 0, (LIGHT_MAX - LIGHT_MIN), IRIS_MAX, IRIS_MIN);
