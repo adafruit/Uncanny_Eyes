@@ -31,6 +31,10 @@ typedef struct {        // Struct is defined before including config.h --
 
 #include "config.h"     // ****** CONFIGURATION IS DONE IN HERE ******
 
+#ifdef ACCEL
+  #include <Adafruit_LIS3DH.h>
+#endif
+
 #if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_)
   typedef Adafruit_ST7735  displayType; // Using TFT display(s)
 #else
@@ -75,6 +79,9 @@ struct {                // One-per-eye structure
   uint32_t startTime;  // For FPS indicator
 #endif
 
+#ifdef ACCEL
+  Adafruit_LIS3DH accel = Adafruit_LIS3DH();
+#endif
 
 // INITIALIZATION -- runs once at startup ----------------------------------
 
@@ -87,6 +94,11 @@ void setup(void) {
   Serial.begin(115200);
 #endif
   randomSeed(analogRead(A3)); // Seed random() from floating analog input
+
+#ifdef ACCEL
+  if (!accel.begin(ACCEL)) abort();
+  accel.setRange(LIS3DH_RANGE_2_G);
+#endif
 
 #ifdef DISPLAY_BACKLIGHT
   // Enable backlight pin, initially off
@@ -457,9 +469,37 @@ void frame( // Process motion for a single frame of left or right eye
     if(dt > eyeMoveDuration) {            // Time up?  Begin new move.
       int16_t  dx, dy;
       uint32_t d;
+#ifdef ACCEL
+      accel.read();
+#endif
       do {                                // Pick new dest in circle
         eyeNewX = random(1024);
+#ifdef ACCEL
+        // We constrain this to [32,960] instead of [0,1023] to
+        // provide sufficient slack for the possible X values.
+        // Otherwise, the eye would be stuck at the X center when it's
+        // looking up.
+#ifdef ACCEL_TRIG
+        // This uses the Maclauren series approximation of the arcsine
+        // to avoid needing to link in the floating-point math
+        // libraries.
+        float asinzg = accel.z_g +
+            .075 * accel.z_g * accel.z_g * accel.z_g * accel.z_g * accel.z_g +
+            accel.z_g * accel.z_g * accel.z_g / 6;
+        eyeNewY = constrain(map(
+            asinzg * 1000, ACCEL_MIN, ACCEL_MAX, 32, 960), 32, 960);
+#else
+        // sin(x) is approximately x near 0, so if you're limiting
+        // near about +/-0.5g, this is fine.
+        eyeNewY = constrain(map(
+            accel.z_g * 1000, ACCEL_MIN, ACCEL_MAX, 32, 960), 32, 960);
+#endif
+        // Add a random amount of vertical movement.
+        eyeNewY += random(ACCEL_SACCADE) - (ACCEL_SACCADE/2);
+        eyeNewY = constrain(eyeNewY, 0, 1023);
+#else
         eyeNewY = random(1024);
+#endif
         dx      = (eyeNewX * 2) - 1023;
         dy      = (eyeNewY * 2) - 1023;
       } while((d = (dx * dx + dy * dy)) > (1023 * 1023)); // Keep trying

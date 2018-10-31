@@ -139,3 +139,21 @@ eyeInfo_t eyeInfo[] = {
 #if !defined(IRIS_MAX)
   #define IRIS_MAX      720 // Iris size (0-1023) in darkest light
 #endif
+
+#ifdef ADAFRUIT_HALLOWING
+  #define ACCEL 0x18 // Use the built-in accelerometer for vertical eye tracking
+  // What range do you want to look at?  This is in milliradians from
+  // vertical if ACCEL_TRIG is defined, or thousandths of 1g otherwise.
+  // This range looks about right for the dragon eye; other
+  // eyes may prefer different ranges.
+  #define ACCEL_TRIG
+  #define ACCEL_MIN -775
+  #define ACCEL_MAX -300
+  // I can't get the default eye looking right; maybe try something around
+  // here.
+  //#define ACCEL_TRIG
+  //#define ACCEL_MIN -1000
+  //#define ACCEL_MAX 700
+  // Add some random vertical movement to the eye.
+  #define ACCEL_SACCADE 256
+#endif
