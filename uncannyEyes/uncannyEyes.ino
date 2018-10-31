@@ -304,7 +304,11 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
         p = 0;
       } else if((irisY < 0) || (irisY >= IRIS_HEIGHT) ||
                 (irisX < 0) || (irisX >= IRIS_WIDTH)) { // In sclera
+#ifdef FLAT_SCLERA
+        p = FLAT_SCLERA;
+#else
         p = sclera[scleraY][scleraX];
+#endif
       } else {                                          // Maybe iris...
         p = polar[irisY][irisX];                        // Polar angle/dist
         d = (iScale * (p & 0x7F)) / 128;                // Distance (Y)
@@ -312,7 +316,11 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
           a = (IRIS_MAP_WIDTH * (p >> 7)) / 512;        // Angle (X)
           p = iris[d][a];                               // Pixel = iris
         } else {                                        // Not in iris
+#ifdef FLAT_SCLERA
+          p = FLAT_SCLERA;
+#else
           p = sclera[scleraY][scleraX];                 // Pixel = sclera
+#endif
         }
       }
 #ifdef ARDUINO_ARCH_SAMD

@@ -22,6 +22,12 @@
 //#include "graphics/newtEye.h"       // Eye of newt -OR-
 //#include "graphics/terminatorEye.h" // Git to da choppah!
 
+// If your eye has a sclera bitmap that's all the same color (dragon,
+// goat, noSclera), define FLAT_SCLERA to 0.  (You can use a different
+// value for a constant color other than black.)  This will save about
+// 50k of flash, which lets you enable lots of other features!
+//#define FLAT_SCLERA 0
+
 // Optional: enable this line for startup logo (screen test/orient):
 #if !defined ADAFRUIT_HALLOWING     // Hallowing can't always fit logo+eye
   #include "graphics/logo.h"        // Otherwise your choice, if it fits
