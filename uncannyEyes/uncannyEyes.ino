@@ -66,7 +66,9 @@ struct {                // One-per-eye structure
 
   // DMA transfer-in-progress indicator and callback
   static volatile bool dma_busy = false;
-  static void dma_callback(Adafruit_ZeroDMA *dma) { dma_busy = false; }
+  static void dma_callback(Adafruit_ZeroDMA *dma __attribute__((unused))) {
+      dma_busy = false;
+  }
 #endif
 
 uint32_t startTime;  // For FPS indicator
