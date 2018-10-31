@@ -247,7 +247,9 @@ void setup(void) {
 
 #endif // End SAMD-specific SPI DMA init
 
-#ifdef DISPLAY_BACKLIGHT
+#if defined(DISPLAY_BACKLIGHT) && !defined(BACKLIGHT_MIN)
+  // Turn on the backlight, unless it's adaptive (in which case we'll
+  // turn it off in the frame).
   analogWrite(DISPLAY_BACKLIGHT, BACKLIGHT_MAX);
 #endif
 
@@ -648,7 +650,31 @@ void loop() {
       /* else */     0.41260 * vd + 0.587401;
   v = vc * (LIGHT_MAX - LIGHT_MIN);
 #endif
+
+#ifdef BACKLIGHT_MIN
+  // Put a low-pass filter on the reading and use it to feed the backlight.
+  static uint32_t backlight_accum =
+      (BACKLIGHT_MAX + BACKLIGHT_MIN) / 2 * BL_RESPONSE_TIME;
+  // For the LPF we're using to produce outputs from BACKLIGHT_MIN to
+  // BACKLIGHT_MAX, we need to have its inputs that can slightly exceed
+  // that.
+  int new_backlight_target =
+      map(v, (LIGHT_MAX - LIGHT_MIN), 0, BACKLIGHT_MAX + 1, BACKLIGHT_MIN);
+  backlight_accum =
+      (backlight_accum * (BL_RESPONSE_TIME - 1) / BL_RESPONSE_TIME)
+      + new_backlight_target;
+  int new_backlight = backlight_accum / BL_RESPONSE_TIME;
+#if defined(ARDUINO_ARCH_SAMD) && BACKLIGHT_MAX == 256
+  // See https://learn.adafruit.com/adafruit-hallowing/adapting-sketches-to-m0#analogwrite-pwm-range-7-7
+  if (new_backlight == 256)
+    digitalWrite(DISPLAY_BACKLIGHT, HIGH);
+  else
+    analogWrite(DISPLAY_BACKLIGHT, backlight_accum / BL_RESPONSE_TIME);
+#else
+  analogWrite(DISPLAY_BACKLIGHT, backlight_accum / BL_RESPONSE_TIME);
 #endif
+#endif
+
   // And scale to iris range (IRIS_MAX is size at LIGHT_MIN)
   v = map(v, 0, (LIGHT_MAX - LIGHT_MIN), IRIS_MAX, IRIS_MIN);
 #ifdef IRIS_SMOOTH // Filter input (gradual motion)

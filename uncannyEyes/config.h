@@ -56,14 +56,30 @@ eyeInfo_t eyeInfo[] = {
   #include <Adafruit_ST7735.h> // TFT display library
   #define DISPLAY_DC       38  // Display data/command pin
   #define DISPLAY_RESET    37  // Display reset pin
-  #define DISPLAY_BACKLIGHT 7
-  #define BACKLIGHT_MAX   128
 #else
   // Enable ONE of these #includes to specify the display type being used
   #include <Adafruit_SSD1351.h>  // OLED display library -OR-
   //#include <Adafruit_ST7735.h> // TFT display library (enable one only)
   #define DISPLAY_DC        7    // Data/command pin for ALL displays
   #define DISPLAY_RESET     8    // Reset pin for ALL displays
+#endif
+
+#ifdef ADAFRUIT_HALLOWING
+  // Light up the backlight on the LCD.
+  #define DISPLAY_BACKLIGHT 7
+  // For a fixed-brightness backlight, set BACKLIGHT_MAX but not BACKLIGHT_MIN.
+  //#define BACKLIGHT_MAX  128
+
+  // For an adaptive backlight (requires LIGHT_PIN, below), set both
+  // BACKLIGHT_MIN and BACKLIGHT_MAX.  For best results, also set
+  // LIGHT_CURVE or FAKE_LIGHT_CURVE.
+  #define BACKLIGHT_MIN  32
+  #define BACKLIGHT_MAX  256
+  // BL_RESPONSE_TIME: How quickly should the LCD backlight respond to
+  // lighting changes?  1024 means that after changing from complete
+  // dark to complete light, it takes about 30 seconds to brighten to
+  // 63%.  (It takes about three minutes to change completely.)
+  #define BL_RESPONSE_TIME 64
 #endif
 
 #if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_)
