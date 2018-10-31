@@ -71,7 +71,9 @@ struct {                // One-per-eye structure
   }
 #endif
 
-uint32_t startTime;  // For FPS indicator
+#ifdef FPS
+  uint32_t startTime;  // For FPS indicator
+#endif
 
 
 // INITIALIZATION -- runs once at startup ----------------------------------
@@ -79,7 +81,11 @@ uint32_t startTime;  // For FPS indicator
 void setup(void) {
   uint8_t e; // Eye index, 0 to NUM_EYES-1
 
+  //Serial.begin(115200);
+
+#ifdef FPS
   Serial.begin(115200);
+#endif
   randomSeed(analogRead(A3)); // Seed random() from floating analog input
 
 #ifdef DISPLAY_BACKLIGHT
@@ -255,7 +261,9 @@ void setup(void) {
   analogWrite(DISPLAY_BACKLIGHT, BACKLIGHT_MAX);
 #endif
 
+#ifdef FPS
   startTime = millis(); // For frame-rate calculation
+#endif
 }
 
 
@@ -383,15 +391,17 @@ uint32_t timeOfLastBlink = 0L, timeToNextBlink = 0L;
 
 void frame( // Process motion for a single frame of left or right eye
   uint16_t        iScale) {     // Iris scale (0-1023) passed in
-  static uint32_t frames   = 0; // Used in frame rate calculation
   static uint8_t  eyeIndex = 0; // eye[] array counter
   int16_t         eyeX, eyeY;
   uint32_t        t = micros(); // Time at start of function
 
+#ifdef FPS
+  static uint32_t frames   = 0; // Used in frame rate calculation
   if(!(++frames & 255)) { // Every 256 frames...
     uint32_t elapsed = (millis() - startTime) / 1000;
     if(elapsed) Serial.println(frames / elapsed); // Print FPS
   }
+#endif
 
   if(++eyeIndex >= NUM_EYES) eyeIndex = 0; // Cycle through eyes, 1 per call
 
