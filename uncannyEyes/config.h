@@ -21,6 +21,9 @@
 //#include "graphics/goatEye.h"       // Horizontal pupil goat/Krampus eye -OR-
 //#include "graphics/newtEye.h"       // Eye of newt -OR-
 //#include "graphics/terminatorEye.h" // Git to da choppah!
+//#include "graphics/catEye.h"        // Cartoonish cat (flat "2D" colors)
+//#include "graphics/owlEye.h"        // Minerva the owl (DISABLE TRACKING)
+//#include "graphics/naugaEye.h"      // Nauga googly eye (DISABLE TRACKING)
 
 // If your eye has a sclera bitmap that's all the same color (dragon,
 // goat, noSclera), define FLAT_SCLERA to 0.  (You can use a different
@@ -56,6 +59,9 @@ eyeInfo_t eyeInfo[] = {
   #include <Adafruit_ST7735.h> // TFT display library
   #define DISPLAY_DC       38  // Display data/command pin
   #define DISPLAY_RESET    37  // Display reset pin
+  //#define SYNCPIN        A2  // I2C sync if set, GND this pin on receiver
+  //#define SYNCADDR     0x08  // I2C address of receiver
+                               // (Try disabling SYMMETRICAL_EYELID then)
 #else
   // Enable ONE of these #includes to specify the display type being used
   #include <Adafruit_SSD1351.h>  // OLED display library -OR-
