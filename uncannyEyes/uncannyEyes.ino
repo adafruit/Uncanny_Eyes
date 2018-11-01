@@ -134,7 +134,7 @@ void setup(void) {
   randomSeed(analogRead(A3)); // Seed random() from floating analog input
 
 #ifdef ACCEL
-  if (!accel.begin(ACCEL)) abort();
+  accel.begin(ACCEL);
   accel.setRange(LIS3DH_RANGE_2_G);
 #endif
 
