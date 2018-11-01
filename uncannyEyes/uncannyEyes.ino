@@ -313,7 +313,7 @@ void setup(void) {
 
 #if defined(DISPLAY_BACKLIGHT) && !defined(BACKLIGHT_MIN)
   // Turn on the backlight, unless it's adaptive (in which case we'll
-  // turn it off in the frame).
+  // turn it on in the frame).
   analogWrite(DISPLAY_BACKLIGHT, BACKLIGHT_MAX);
 #endif
 
