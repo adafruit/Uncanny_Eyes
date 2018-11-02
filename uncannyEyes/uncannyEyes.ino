@@ -17,8 +17,6 @@
 // Inspired by David Boccabella's (Marcwolf) hybrid servo/OLED eye concept.
 //--------------------------------------------------------------------------
 
-// $TODO: include changes for 2018 Halloween.
-
 #include <SPI.h>
 #include <Adafruit_GFX.h>
 #ifdef ARDUINO_ARCH_SAMD
