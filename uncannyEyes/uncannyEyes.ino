@@ -95,6 +95,32 @@ struct {                // One-per-eye structure
 
 uint32_t startTime;  // For FPS indicator
 
+#if defined(SYNCPIN) && (SYNCPIN >= 0)
+#include <Wire.h>
+// If two boards are synchronized over I2C, this struct is passed from one
+// to other. No device-independent packing & unpacking is performed...both
+// boards are expected to be the same architecture & endianism.
+struct {
+  uint16_t iScale;  // These are basically the same arguments as
+  uint8_t  scleraX; // drawEye() expects, explained in that function.
+  uint8_t  scleraY;
+  uint8_t  uT;
+  uint8_t  lT;
+} syncStruct = { 512,
+  (SCLERA_WIDTH-SCREEN_WIDTH)/2, (SCLERA_HEIGHT-SCREEN_HEIGHT)/2, 0, 0 };
+
+void wireCallback(int n) {
+  if(n == sizeof syncStruct) {
+    // Read 'n' bytes from I2C into syncStruct
+    uint8_t *ptr = (uint8_t *)&syncStruct;
+    for(uint8_t i=0; i < sizeof syncStruct; i++) {
+      ptr[i] = Wire.read();
+    }
+  }
+}
+
+bool receiver = false;
+#endif // SYNCPIN
 
 // INITIALIZATION -- runs once at startup ----------------------------------
 
@@ -102,6 +128,17 @@ void setup(void) {
   uint8_t e; // Eye index, 0 to NUM_EYES-1
 
   Serial.begin(9600);
+#if defined(SYNCPIN) && (SYNCPIN >= 0) // If using I2C sync...
+  pinMode(SYNCPIN, INPUT_PULLUP);      // Check for jumper to ground
+  if(!digitalRead(SYNCPIN)) {          // If there...
+    receiver = true;                   // Set this one up as receiver
+    Wire.begin(SYNCADDR);
+    Wire.onReceive(wireCallback);
+  } else {
+    Wire.begin();                      // Else set up as sender
+  }
+#endif
+
   randomSeed(analogRead(A3)); // Seed random() from floating analog input
 
 #ifdef DISPLAY_BACKLIGHT
@@ -197,30 +234,36 @@ void setup(void) {
   // eyelid handling in the drawEye() function -- no need for distinct
   // L-to-R or R-to-L inner loops.  Just the X coordinate of the iris is
   // then reversed when drawing this eye, so they move the same.  Magic!
+#if defined(SYNCPIN) && (SYNCPIN >= 0)
+  if(receiver) {
+#endif
 #if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_) // TFT
-  const uint8_t mirrorTFT[]  = { 0x88, 0x28, 0x48, 0xE8 }; // Mirror+rotate
-  digitalWrite(eyeInfo[0].select, LOW);
-  digitalWrite(DISPLAY_DC, LOW);
-  #ifdef ST77XX_MADCTL
-    SPI.transfer(ST77XX_MADCTL); // Current TFT lib
-  #else
-    SPI.transfer(ST7735_MADCTL); // Older TFT lib
-  #endif
-  digitalWrite(DISPLAY_DC, HIGH);
-  SPI.transfer(mirrorTFT[eyeInfo[0].rotation & 3]);
-  digitalWrite(eyeInfo[0].select , HIGH);
-#else // OLED
-  const uint8_t rotateOLED[] = { 0x74, 0x77, 0x66, 0x65 },
-                mirrorOLED[] = { 0x76, 0x67, 0x64, 0x75 }; // Mirror+rotate
-  // If OLED, loop through ALL eyes and set up remap register
-  // from either mirrorOLED[] (first eye) or rotateOLED[] (others).
-  // The OLED library doesn't normally use the remap reg (TFT does).
-  for(e=0; e<NUM_EYES; e++) {
-    eye[e].display->writeCommand(SSD1351_CMD_SETREMAP);
-    eye[e].display->writeData(e ?
-      rotateOLED[eyeInfo[e].rotation & 3] :
-      mirrorOLED[eyeInfo[e].rotation & 3]);
-  }
+    const uint8_t mirrorTFT[]  = { 0x88, 0x28, 0x48, 0xE8 }; // Mirror+rotate
+    digitalWrite(eyeInfo[0].select, LOW);
+    digitalWrite(DISPLAY_DC, LOW);
+    #ifdef ST77XX_MADCTL
+      SPI.transfer(ST77XX_MADCTL); // Current TFT lib
+    #else
+      SPI.transfer(ST7735_MADCTL); // Older TFT lib
+    #endif
+    digitalWrite(DISPLAY_DC, HIGH);
+    SPI.transfer(mirrorTFT[eyeInfo[0].rotation & 3]);
+    digitalWrite(eyeInfo[0].select , HIGH);
+  #else // OLED
+    const uint8_t rotateOLED[] = { 0x74, 0x77, 0x66, 0x65 },
+                  mirrorOLED[] = { 0x76, 0x67, 0x64, 0x75 }; // Mirror+rotate
+    // If OLED, loop through ALL eyes and set up remap register
+    // from either mirrorOLED[] (first eye) or rotateOLED[] (others).
+    // The OLED library doesn't normally use the remap reg (TFT does).
+    for(e=0; e<NUM_EYES; e++) {
+      eye[e].display->writeCommand(SSD1351_CMD_SETREMAP);
+      eye[e].display->writeData(e ?
+        rotateOLED[eyeInfo[e].rotation & 3] :
+        mirrorOLED[eyeInfo[e].rotation & 3]);
+    }
+#endif
+#if defined(SYNCPIN) && (SYNCPIN >= 0)
+  } // Don't mirror receiver screen
 #endif
 
 #ifdef ARDUINO_ARCH_SAMD
@@ -312,7 +355,7 @@ SPISettings settings(SPI_FREQ, MSBFIRST, SPI_MODE0);
 
 void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
   uint8_t  e,       // Eye array index; 0 or 1 for left/right
-  uint32_t iScale,  // Scale factor for iris
+  uint16_t iScale,  // Scale factor for iris (0-1023)
   uint8_t  scleraX, // First pixel X offset into sclera image
   uint8_t  scleraY, // First pixel Y offset into sclera image
   uint8_t  uT,      // Upper eyelid threshold value
@@ -322,6 +365,34 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
   int16_t  irisX, irisY;
   uint16_t p, a;
   uint32_t d;
+
+#if defined(SYNCPIN) && (SYNCPIN >= 0)
+  if(receiver) {
+    // Overwrite arguments with values in syncStruct.  Disable interrupts
+    // briefly so new data can't overwrite the struct in mid-parse.
+    noInterrupts();
+    iScale  = syncStruct.iScale;
+    // Screen is mirrored, this 'de-mirrors' the eye X direction
+    scleraX = SCLERA_WIDTH - 1 - SCREEN_WIDTH - syncStruct.scleraX;
+    scleraY = syncStruct.scleraY;
+    uT      = syncStruct.uT;
+    lT      = syncStruct.lT;
+    interrupts();
+  } else {
+    // Stuff arguments into syncStruct and send to receiver
+    syncStruct.iScale  = iScale;
+    syncStruct.scleraX = scleraX;
+    syncStruct.scleraY = scleraY;
+    syncStruct.uT      = uT;
+    syncStruct.lT      = lT;
+    Wire.beginTransmission(SYNCADDR);
+    Wire.write((char *)&syncStruct, sizeof syncStruct);
+    Wire.endTransmission();
+  }
+#endif
+
+  uint8_t  irisThreshold = (128 * (1023 - iScale) + 512) / 1024;
+  uint32_t irisScale     = IRIS_MAP_HEIGHT * 65536 / irisThreshold;
 
   // Set up raw pixel dump to entire screen.  Although such writes can wrap
   // around automatically from end of rect back to beginning, the region is
@@ -358,8 +429,9 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
         p = sclera[scleraY][scleraX];
       } else {                                          // Maybe iris...
         p = polar[irisY][irisX];                        // Polar angle/dist
-        d = (iScale * (p & 0x7F)) / 128;                // Distance (Y)
-        if(d < IRIS_MAP_HEIGHT) {                       // Within iris area
+        d = p & 0x7F;                                   // Distance from edge (0-127)
+        if(d < irisThreshold) {                         // Within scaled iris area
+          d = d * irisScale / 65536;                    // d scaled to iris image height
           a = (IRIS_MAP_WIDTH * (p >> 7)) / 512;        // Angle (X)
           p = iris[d][a];                               // Pixel = iris
         } else {                                        // Not in iris
@@ -394,7 +466,6 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
   digitalWrite(eyeInfo[e].select, HIGH);          // Deselect
   SPI.endTransaction();
 }
-
 
 // EYE ANIMATION -----------------------------------------------------------
 
@@ -566,10 +637,6 @@ void frame( // Process motion for a single frame of left or right eye
 
   // Process motion, blinking and iris scale into renderable values
 
-  // Iris scaling: remap from 0-1023 input to iris map height pixel units
-  iScale = ((IRIS_MAP_HEIGHT + 1) * 1024) /
-           (1024 - (iScale * (IRIS_MAP_HEIGHT - 1) / IRIS_MAP_HEIGHT));
-
   // Scale eye X/Y positions (0-1023) to pixel units used by drawEye()
   eyeX = map(eyeX, 0, 1023, 0, SCLERA_WIDTH  - 128);
   eyeY = map(eyeY, 0, 1023, 0, SCLERA_HEIGHT - 128);
@@ -620,7 +687,6 @@ void frame( // Process motion for a single frame of left or right eye
   // Pass all the derived values to the eye-rendering function:
   drawEye(eyeIndex, iScale, eyeX, eyeY, n, lThreshold);
 }
-
 
 // AUTONOMOUS IRIS SCALING (if no photocell or dial) -----------------------
 
