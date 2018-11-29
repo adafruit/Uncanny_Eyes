@@ -24,6 +24,7 @@
 //#include "graphics/catEye.h"        // Cartoonish cat (flat "2D" colors)
 //#include "graphics/owlEye.h"        // Minerva the owl (DISABLE TRACKING)
 //#include "graphics/naugaEye.h"      // Nauga googly eye (DISABLE TRACKING)
+//#include "graphics/doeEye.h"        // Cartoon deer eye (DISABLE TRACKING)
 
 // Optional: enable this line for startup logo (screen test/orient):
 #if !defined ADAFRUIT_HALLOWING     // Hallowing can't always fit logo+eye
