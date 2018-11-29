@@ -233,7 +233,7 @@ void setup(void) {
     // The OLED library doesn't normally use the remap reg (TFT does).
     for(e=0; e<NUM_EYES; e++) {
       eye[e].display->writeCommand(SSD1351_CMD_SETREMAP);
-      eye[e].display->writeData(e ?
+      eye[e].display->spiWrite(e ?
         rotateOLED[eyeInfo[e].rotation & 3] :
         mirrorOLED[eyeInfo[e].rotation & 3]);
     }
@@ -352,9 +352,9 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
   eye[e].display->setAddrWindow(0, 0, 128, 128);
 #else // OLED
   eye[e].display->writeCommand(SSD1351_CMD_SETROW);    // Y range
-  eye[e].display->writeData(0); eye[e].display->writeData(SCREEN_HEIGHT - 1);
+  eye[e].display->spiWrite(0); eye[e].display->spiWrite(SCREEN_HEIGHT - 1);
   eye[e].display->writeCommand(SSD1351_CMD_SETCOLUMN); // X range
-  eye[e].display->writeData(0); eye[e].display->writeData(SCREEN_WIDTH  - 1);
+  eye[e].display->spiWrite(0); eye[e].display->spiWrite(SCREEN_WIDTH  - 1);
   eye[e].display->writeCommand(SSD1351_CMD_WRITERAM);  // Begin write
 #endif
   digitalWrite(eyeInfo[e].select, LOW);                // Re-chip-select
