@@ -8,7 +8,7 @@
 // If using a SINGLE EYE, you might want this next line enabled, which
 // uses a simpler "football-shaped" eye that's left/right symmetrical.
 // Default shape includes the caruncle, creating distinct left/right eyes.
-#ifdef ADAFRUIT_HALLOWING // Hallowing, with one eye, does this by default
+#if defined(ADAFRUIT_HALLOWING) || defined(ARDUINO_SAMD_CIRCUITPLAYGROUND_EXPRESS) // Hallowing, with one eye, does this by default
   #define SYMMETRICAL_EYELID
 #else                     // Otherwise your choice, standard is asymmetrical
   //#define SYMMETRICAL_EYELID
@@ -27,7 +27,7 @@
 //#include "graphics/doeEye.h"        // Cartoon deer eye (DISABLE TRACKING)
 
 // Optional: enable this line for startup logo (screen test/orient):
-#if !defined ADAFRUIT_HALLOWING     // Hallowing can't always fit logo+eye
+#if !defined(ADAFRUIT_HALLOWING)    // Hallowing can't always fit logo+eye
   #include "graphics/logo.h"        // Otherwise your choice, if it fits
 #endif
 
@@ -40,8 +40,10 @@
 // rotation value (0-3) for that eye.
 
 eyeInfo_t eyeInfo[] = {
-#ifdef ADAFRUIT_HALLOWING
+#if defined(ADAFRUIT_HALLOWING)
   { 39, -1, 2 }, // SINGLE EYE display-select and wink pins, rotate 180
+#elif defined(ARDUINO_SAMD_CIRCUITPLAYGROUND_EXPRESS)
+  { A7, -1, 0 }, // SINGLE EYE display-select and wink pins, no rotate
 #else
   {  9, 0, 0 }, // LEFT EYE display-select and wink pins, no rotation
   { 10, 2, 0 }, // RIGHT EYE display-select and wink pins, no rotation
@@ -50,7 +52,15 @@ eyeInfo_t eyeInfo[] = {
 
 // DISPLAY HARDWARE SETTINGS (screen type & connections) -------------------
 
-#ifdef ADAFRUIT_HALLOWING
+#if defined(ARDUINO_SAMD_CIRCUITPLAYGROUND_EXPRESS)
+  #define TFT_SPI        SPI1
+  #define TFT_PERIPH     PERIPH_SPI1
+#else
+  #define TFT_SPI        SPI
+  #define TFT_PERIPH     PERIPH_SPI
+#endif
+
+#if defined(ADAFRUIT_HALLOWING)
   #include <Adafruit_ST7735.h> // TFT display library
   #define DISPLAY_DC       38  // Display data/command pin
   #define DISPLAY_RESET    37  // Display reset pin
@@ -59,6 +69,12 @@ eyeInfo_t eyeInfo[] = {
   //#define SYNCPIN        A2  // I2C sync if set, GND this pin on receiver
   //#define SYNCADDR     0x08  // I2C address of receiver
                                // (Try disabling SYMMETRICAL_EYELID then)
+#elif defined(ARDUINO_SAMD_CIRCUITPLAYGROUND_EXPRESS)
+  #include <Adafruit_ST7735.h> // TFT display library
+  #define DISPLAY_DC       A6  // Display data/command pin
+  #define DISPLAY_RESET    -1  // Display reset pin
+  #define DISPLAY_BACKLIGHT A3
+  #define BACKLIGHT_MAX   255
 #else
   // Enable ONE of these #includes to specify the display type being used
   #include <Adafruit_SSD1351.h>  // OLED display library -OR-
@@ -95,14 +111,20 @@ eyeInfo_t eyeInfo[] = {
 //#define JOYSTICK_X_FLIP   // If defined, reverse stick X axis
 //#define JOYSTICK_Y_FLIP   // If defined, reverse stick Y axis
 #define TRACKING            // If defined, eyelid tracks pupil
-#define BLINK_PIN         1 // Pin for manual blink button (BOTH eyes)
 #define AUTOBLINK           // If defined, eyes also blink autonomously
-#ifdef ADAFRUIT_HALLOWING
+#if defined(ADAFRUIT_HALLOWING)
   #define LIGHT_PIN      A1 // Hallowing light sensor pin
   #define LIGHT_CURVE  0.33 // Light sensor adjustment curve
   #define LIGHT_MIN      30 // Minimum useful reading from light sensor
   #define LIGHT_MAX     980 // Maximum useful reading from sensor
+#elif defined(ARDUINO_SAMD_CIRCUITPLAYGROUND_EXPRESS)
+  #define LIGHT_PIN      A8 // CPX light sensor pin
+  #define LIGHT_CURVE  0.33 // Light sensor adjustment curve
+  #define LIGHT_MIN      30 // Minimum useful reading from light sensor
+  #define LIGHT_MAX     980 // Maximum useful reading from sensor
+  #define BLINK_PIN      4 //  Button
 #else
+  #define BLINK_PIN         1 // Pin for manual blink button (BOTH eyes)
   #define LIGHT_PIN      A2 // Photocell or potentiometer (else auto iris)
 //#define LIGHT_PIN_FLIP    // If defined, reverse reading from dial/photocell
   #define LIGHT_MIN       0 // Lower reading from sensor

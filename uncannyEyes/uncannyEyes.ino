@@ -115,17 +115,21 @@ void setup(void) {
 #endif
 
   Serial.begin(115200);
+  //while (!Serial);
+  Serial.println("Init");
   randomSeed(analogRead(A3)); // Seed random() from floating analog input
 
 #ifdef DISPLAY_BACKLIGHT
   // Enable backlight pin, initially off
+  Serial.println("Backlight off");
   pinMode(DISPLAY_BACKLIGHT, OUTPUT);
   digitalWrite(DISPLAY_BACKLIGHT, LOW);
 #endif
 
   // Initialize eye objects based on eyeInfo list in config.h:
   for(e=0; e<NUM_EYES; e++) {
-    eye[e].display     = new displayType(eyeInfo[e].select, DISPLAY_DC, -1);
+    Serial.print("Create display #"); Serial.println(e);
+    eye[e].display     = new displayType(&TFT_SPI, eyeInfo[e].select, DISPLAY_DC, -1);
     eye[e].blink.state = NOBLINK;
     // If project involves only ONE eye and NO other SPI devices, its
     // select line can be permanently tied to GND and corresponding pin
@@ -146,6 +150,7 @@ void setup(void) {
   // the display constructor above to prevent the begin() function from
   // resetting both displays after one is initialized.  Instead, handle
   // the reset manually here to take care of both displays just once:
+  Serial.println("Reset displays");
   pinMode(DISPLAY_RESET, OUTPUT);
   digitalWrite(DISPLAY_RESET, LOW);  delay(1);
   digitalWrite(DISPLAY_RESET, HIGH); delay(50);
@@ -158,13 +163,17 @@ void setup(void) {
   for(e=0; e<NUM_EYES; e++) {
 #if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_) // TFT
     eye[e].display->initR(INITR_144GREENTAB);
+    Serial.print("Init ST77xx display #"); Serial.println(e);
 #else // OLED
     eye[e].display->begin();
 #endif
+    Serial.println("Rotate");
     eye[e].display->setRotation(eyeInfo[e].rotation);
   }
+  Serial.println("done");
 
 #if defined(LOGO_TOP_WIDTH) || defined(COLOR_LOGO_WIDTH)
+  Serial.println("Display logo");
   // I noticed lots of folks getting right/left eyes flipped, or
   // installing upside-down, etc.  Logo split across screens may help:
   for(e=0; e<NUM_EYES; e++) { // Another pass, after all screen inits
@@ -188,11 +197,13 @@ void setup(void) {
   }
   #ifdef DISPLAY_BACKLIGHT
     int i;
+    Serial.println("Fade in backlight");
     for(i=0; i<BACKLIGHT_MAX; i++) { // Fade logo in
       analogWrite(DISPLAY_BACKLIGHT, i);
       delay(2);
     }
     delay(1400); // Pause for screen layout/orientation
+    Serial.println("Fade out backlight");
     for(; i>=0; i--) {
       analogWrite(DISPLAY_BACKLIGHT, i);
       delay(2);
@@ -218,12 +229,12 @@ void setup(void) {
     digitalWrite(eyeInfo[0].select, LOW);
     digitalWrite(DISPLAY_DC, LOW);
     #ifdef ST77XX_MADCTL
-      SPI.transfer(ST77XX_MADCTL); // Current TFT lib
+      TFT_SPI.transfer(ST77XX_MADCTL); // Current TFT lib
     #else
-      SPI.transfer(ST7735_MADCTL); // Older TFT lib
+      TFT_SPI.transfer(ST7735_MADCTL); // Older TFT lib
     #endif
     digitalWrite(DISPLAY_DC, HIGH);
-    SPI.transfer(mirrorTFT[eyeInfo[0].rotation & 3]);
+    TFT_SPI.transfer(mirrorTFT[eyeInfo[0].rotation & 3]);
     digitalWrite(eyeInfo[0].select , HIGH);
   #else // OLED
     const uint8_t rotateOLED[] = { 0x74, 0x77, 0x66, 0x65 },
@@ -246,36 +257,37 @@ void setup(void) {
   // Set up SPI DMA on SAMD boards:
   int                dmac_id;
   volatile uint32_t *data_reg;
-  if(&PERIPH_SPI == &sercom0) {
+  if(&TFT_PERIPH == &sercom0) {
     dmac_id  = SERCOM0_DMAC_ID_TX;
     data_reg = &SERCOM0->SPI.DATA.reg;
 #if defined SERCOM1
-  } else if(&PERIPH_SPI == &sercom1) {
+  } else if(&TFT_PERIPH == &sercom1) {
     dmac_id  = SERCOM1_DMAC_ID_TX;
     data_reg = &SERCOM1->SPI.DATA.reg;
 #endif
 #if defined SERCOM2
-  } else if(&PERIPH_SPI == &sercom2) {
+  } else if(&TFT_PERIPH == &sercom2) {
     dmac_id  = SERCOM2_DMAC_ID_TX;
     data_reg = &SERCOM2->SPI.DATA.reg;
 #endif
 #if defined SERCOM3
-  } else if(&PERIPH_SPI == &sercom3) {
+  } else if(&TFT_PERIPH == &sercom3) {
     dmac_id  = SERCOM3_DMAC_ID_TX;
     data_reg = &SERCOM3->SPI.DATA.reg;
 #endif
 #if defined SERCOM4
-  } else if(&PERIPH_SPI == &sercom4) {
+  } else if(&TFT_PERIPH == &sercom4) {
     dmac_id  = SERCOM4_DMAC_ID_TX;
     data_reg = &SERCOM4->SPI.DATA.reg;
 #endif
 #if defined SERCOM5
-  } else if(&PERIPH_SPI == &sercom5) {
+  } else if(&TFT_PERIPH == &sercom5) {
     dmac_id  = SERCOM5_DMAC_ID_TX;
     data_reg = &SERCOM5->SPI.DATA.reg;
 #endif
   }
 
+  Serial.println("DMA init");
   dma.allocate();
   dma.setTrigger(dmac_id);
   dma.setAction(DMA_TRIGGER_ACTON_BEAT);
@@ -291,6 +303,7 @@ void setup(void) {
 #endif // End SAMD-specific SPI DMA init
 
 #ifdef DISPLAY_BACKLIGHT
+  Serial.println("Backlight on!");
   analogWrite(DISPLAY_BACKLIGHT, BACKLIGHT_MAX);
 #endif
 
@@ -346,7 +359,7 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
   // Set up raw pixel dump to entire screen.  Although such writes can wrap
   // around automatically from end of rect back to beginning, the region is
   // reset on each frame here in case of an SPI glitch.
-  SPI.beginTransaction(settings);
+  TFT_SPI.beginTransaction(settings);
   digitalWrite(eyeInfo[e].select, LOW);                        // Chip select
 #if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_) // TFT
   eye[e].display->setAddrWindow(0, 0, 128, 128);
@@ -413,7 +426,7 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
 #endif
 
   digitalWrite(eyeInfo[e].select, HIGH);          // Deselect
-  SPI.endTransaction();
+  TFT_SPI.endTransaction();
 }
 
 // EYE ANIMATION -----------------------------------------------------------
