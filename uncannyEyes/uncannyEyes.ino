@@ -129,7 +129,13 @@ void setup(void) {
   // Initialize eye objects based on eyeInfo list in config.h:
   for(e=0; e<NUM_EYES; e++) {
     Serial.print("Create display #"); Serial.println(e);
-    eye[e].display     = new displayType(&TFT_SPI, eyeInfo[e].select, DISPLAY_DC, -1);
+#if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_) // TFT
+    eye[e].display     = new displayType(&TFT_SPI, eyeInfo[e].select,
+                           DISPLAY_DC, -1);
+#else // OLED
+    eye[e].display     = new displayType(128, 128, &TFT_SPI,
+                           eyeInfo[e].select, DISPLAY_DC, -1);
+#endif
     eye[e].blink.state = NOBLINK;
     // If project involves only ONE eye and NO other SPI devices, its
     // select line can be permanently tied to GND and corresponding pin
