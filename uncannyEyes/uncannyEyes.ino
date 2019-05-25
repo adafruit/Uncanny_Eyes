@@ -232,16 +232,13 @@ void setup(void) {
 #endif
 #if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_) // TFT
     const uint8_t mirrorTFT[]  = { 0x88, 0x28, 0x48, 0xE8 }; // Mirror+rotate
-    digitalWrite(eyeInfo[0].select, LOW);
-    digitalWrite(DISPLAY_DC, LOW);
+    eye[0].display->sendCommand(
     #ifdef ST77XX_MADCTL
-      TFT_SPI.transfer(ST77XX_MADCTL); // Current TFT lib
+      ST77XX_MADCTL, // Current TFT lib
     #else
-      TFT_SPI.transfer(ST7735_MADCTL); // Older TFT lib
+      ST7735_MADCTL, // Older TFT lib
     #endif
-    digitalWrite(DISPLAY_DC, HIGH);
-    TFT_SPI.transfer(mirrorTFT[eyeInfo[0].rotation & 3]);
-    digitalWrite(eyeInfo[0].select , HIGH);
+      &mirrorTFT[eyeInfo[0].rotation & 3], 1);
   #else // OLED
     const uint8_t rotateOLED[] = { 0x74, 0x77, 0x66, 0x65 },
                   mirrorOLED[] = { 0x76, 0x67, 0x64, 0x75 }; // Mirror+rotate
@@ -249,10 +246,9 @@ void setup(void) {
     // from either mirrorOLED[] (first eye) or rotateOLED[] (others).
     // The OLED library doesn't normally use the remap reg (TFT does).
     for(e=0; e<NUM_EYES; e++) {
-      eye[e].display->writeCommand(SSD1351_CMD_SETREMAP);
-      eye[e].display->spiWrite(e ?
-        rotateOLED[eyeInfo[e].rotation & 3] :
-        mirrorOLED[eyeInfo[e].rotation & 3]);
+      eye[e].display->sendCommand(SSD1351_CMD_SETREMAP, e ?
+        &rotateOLED[eyeInfo[e].rotation & 3] :
+        &mirrorOLED[eyeInfo[e].rotation & 3], 1);
     }
 #endif
 #if defined(SYNCPIN) && (SYNCPIN >= 0)
