@@ -26,6 +26,12 @@
 //#include "graphics/naugaEye.h"      // Nauga googly eye (DISABLE TRACKING)
 //#include "graphics/doeEye.h"        // Cartoon deer eye (DISABLE TRACKING)
 
+// If your eye has a sclera bitmap that's all the same color (dragon,
+// goat, noSclera), define FLAT_SCLERA to 0.  (You can use a different
+// value for a constant color other than black.)  This will save about
+// 50k of flash, which lets you enable lots of other features!
+//#define FLAT_SCLERA 0
+
 // Optional: enable this line for startup logo (screen test/orient):
 #if !defined(ADAFRUIT_HALLOWING)    // Hallowing can't always fit logo+eye
   #include "graphics/logo.h"        // Otherwise your choice, if it fits
@@ -64,8 +70,6 @@ eyeInfo_t eyeInfo[] = {
   #include <Adafruit_ST7735.h> // TFT display library
   #define DISPLAY_DC       38  // Display data/command pin
   #define DISPLAY_RESET    37  // Display reset pin
-  #define DISPLAY_BACKLIGHT 7
-  #define BACKLIGHT_MAX   128
   //#define SYNCPIN        A2  // I2C sync if set, GND this pin on receiver
   //#define SYNCADDR     0x08  // I2C address of receiver
                                // (Try disabling SYMMETRICAL_EYELID then)
@@ -81,6 +85,24 @@ eyeInfo_t eyeInfo[] = {
   //#include <Adafruit_ST7735.h> // TFT display library (enable one only)
   #define DISPLAY_DC        7    // Data/command pin for ALL displays
   #define DISPLAY_RESET     8    // Reset pin for ALL displays
+#endif
+
+#ifdef ADAFRUIT_HALLOWING
+  // Light up the backlight on the LCD.
+  #define DISPLAY_BACKLIGHT 7
+  // For a fixed-brightness backlight, set BACKLIGHT_MAX but not BACKLIGHT_MIN.
+  //#define BACKLIGHT_MAX  128
+
+  // For an adaptive backlight (requires LIGHT_PIN, below), set both
+  // BACKLIGHT_MIN and BACKLIGHT_MAX.  For best results, also set
+  // LIGHT_CURVE or FAKE_LIGHT_CURVE.
+  #define BACKLIGHT_MIN  32
+  #define BACKLIGHT_MAX  256
+  // BL_RESPONSE_TIME: How quickly should the LCD backlight respond to
+  // lighting changes?  1024 means that after changing from complete
+  // dark to complete light, it takes about 30 seconds to brighten to
+  // 63%.  (It takes about three minutes to change completely.)
+  #define BL_RESPONSE_TIME 64
 #endif
 
 #if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_)
@@ -114,9 +136,19 @@ eyeInfo_t eyeInfo[] = {
 #define AUTOBLINK           // If defined, eyes also blink autonomously
 #if defined(ADAFRUIT_HALLOWING)
   #define LIGHT_PIN      A1 // Hallowing light sensor pin
+  // Bringing in the necessary math functions to do a light sensor
+  // curve can be a strong impact (about 50k), and easily get you over
+  // the 256k flash limit of a Hallowing if you have new code.
+  //#define LIGHT_CURVE  0.33 // Light sensor adjustment curve
+  // If you don't need close precision, you can use FAKE_LIGHT_CURVE
+  // instead, which approximates a (hard-coded) 0.33 curve.
+  #define FAKE_LIGHT_CURVE
+  // The Hallowing's light sensor will range from 0 to 980, but almost
+  // all of it is in the lower end.  In a bright room under a desk lamp,
+  // it still only goes to 50 or so.
+  #define LIGHT_MIN       0 // Minimum useful reading from light sensor
+  #define LIGHT_MAX      48 // Maximum useful reading from sensor
   #define LIGHT_CURVE  0.33 // Light sensor adjustment curve
-  #define LIGHT_MIN      30 // Minimum useful reading from light sensor
-  #define LIGHT_MAX     980 // Maximum useful reading from sensor
 #elif defined(ARDUINO_SAMD_CIRCUITPLAYGROUND_EXPRESS)
   #define LIGHT_PIN      A8 // CPX light sensor pin
   #define LIGHT_CURVE  0.33 // Light sensor adjustment curve
@@ -136,4 +168,22 @@ eyeInfo_t eyeInfo[] = {
 #endif
 #if !defined(IRIS_MAX)
   #define IRIS_MAX      720 // Iris size (0-1023) in darkest light
+#endif
+
+#ifdef ADAFRUIT_HALLOWING
+  #define ACCEL 0x18 // Use the built-in accelerometer for vertical eye tracking
+  // What range do you want to look at?  This is in milliradians from
+  // vertical if ACCEL_TRIG is defined, or thousandths of 1g otherwise.
+  // This range looks about right for the dragon eye; other
+  // eyes may prefer different ranges.
+  #define ACCEL_TRIG
+  #define ACCEL_MIN -775
+  #define ACCEL_MAX -300
+  // I can't get the default eye looking right; maybe try something around
+  // here.
+  //#define ACCEL_TRIG
+  //#define ACCEL_MIN -1000
+  //#define ACCEL_MAX 700
+  // Add some random vertical movement to the eye.
+  #define ACCEL_SACCADE 256
 #endif

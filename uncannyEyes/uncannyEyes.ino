@@ -31,6 +31,10 @@ typedef struct {        // Struct is defined before including config.h --
 
 #include "config.h"     // ****** CONFIGURATION IS DONE IN HERE ******
 
+#ifdef ACCEL
+  #include <Adafruit_LIS3DH.h>
+#endif
+
 #if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_)
   typedef Adafruit_ST7735  displayType; // Using TFT display(s)
 #else
@@ -66,10 +70,18 @@ struct {                // One-per-eye structure
 
   // DMA transfer-in-progress indicator and callback
   static volatile bool dma_busy = false;
-  static void dma_callback(Adafruit_ZeroDMA *dma) { dma_busy = false; }
+  static void dma_callback(Adafruit_ZeroDMA *dma __attribute__((unused))) {
+      dma_busy = false;
+  }
 #endif
 
-uint32_t startTime;  // For FPS indicator
+#ifdef SERIAL_MSGS
+  uint32_t startTime;  // For FPS indicator
+#endif
+
+#ifdef ACCEL
+  Adafruit_LIS3DH accel = Adafruit_LIS3DH();
+#endif
 
 #if defined(SYNCPIN) && (SYNCPIN >= 0)
 #include <Wire.h>
@@ -114,21 +126,32 @@ void setup(void) {
   }
 #endif
 
+#ifdef SERIAL_MSGS
   Serial.begin(115200);
   //while (!Serial);
   Serial.println("Init");
+#endif
   randomSeed(analogRead(A3)); // Seed random() from floating analog input
+
+#ifdef ACCEL
+  accel.begin(ACCEL);
+  accel.setRange(LIS3DH_RANGE_2_G);
+#endif
 
 #ifdef DISPLAY_BACKLIGHT
   // Enable backlight pin, initially off
+#ifdef SERIAL_MSGS
   Serial.println("Backlight off");
+#endif
   pinMode(DISPLAY_BACKLIGHT, OUTPUT);
   digitalWrite(DISPLAY_BACKLIGHT, LOW);
 #endif
 
   // Initialize eye objects based on eyeInfo list in config.h:
   for(e=0; e<NUM_EYES; e++) {
+#ifdef SERIAL_MSGS
     Serial.print("Create display #"); Serial.println(e);
+#endif
 #if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_) // TFT
     eye[e].display     = new displayType(&TFT_SPI, eyeInfo[e].select,
                            DISPLAY_DC, -1);
@@ -156,7 +179,9 @@ void setup(void) {
   // the display constructor above to prevent the begin() function from
   // resetting both displays after one is initialized.  Instead, handle
   // the reset manually here to take care of both displays just once:
+#ifdef SERIAL_MSGS
   Serial.println("Reset displays");
+#endif
   pinMode(DISPLAY_RESET, OUTPUT);
   digitalWrite(DISPLAY_RESET, LOW);  delay(1);
   digitalWrite(DISPLAY_RESET, HIGH); delay(50);
@@ -169,17 +194,25 @@ void setup(void) {
   for(e=0; e<NUM_EYES; e++) {
 #if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_) // TFT
     eye[e].display->initR(INITR_144GREENTAB);
+#ifdef SERIAL_MSGS
     Serial.print("Init ST77xx display #"); Serial.println(e);
+#endif
 #else // OLED
     eye[e].display->begin();
 #endif
+#ifdef SERIAL_MSGS
     Serial.println("Rotate");
+#endif
     eye[e].display->setRotation(eyeInfo[e].rotation);
   }
+#ifdef SERIAL_MSGS
   Serial.println("done");
+#endif
 
 #if defined(LOGO_TOP_WIDTH) || defined(COLOR_LOGO_WIDTH)
+#ifdef SERIAL_MSGS
   Serial.println("Display logo");
+#endif
   // I noticed lots of folks getting right/left eyes flipped, or
   // installing upside-down, etc.  Logo split across screens may help:
   for(e=0; e<NUM_EYES; e++) { // Another pass, after all screen inits
@@ -203,13 +236,17 @@ void setup(void) {
   }
   #ifdef DISPLAY_BACKLIGHT
     int i;
+#ifdef SERIAL_MSGS
     Serial.println("Fade in backlight");
+#endif
     for(i=0; i<BACKLIGHT_MAX; i++) { // Fade logo in
       analogWrite(DISPLAY_BACKLIGHT, i);
       delay(2);
     }
     delay(1400); // Pause for screen layout/orientation
+#ifdef SERIAL_MSGS
     Serial.println("Fade out backlight");
+#endif
     for(; i>=0; i--) {
       analogWrite(DISPLAY_BACKLIGHT, i);
       delay(2);
@@ -289,7 +326,9 @@ void setup(void) {
 #endif
   }
 
+#ifdef SERIAL_MSGS
   Serial.println("DMA init");
+#endif
   dma.allocate();
   dma.setTrigger(dmac_id);
   dma.setAction(DMA_TRIGGER_ACTON_BEAT);
@@ -304,12 +343,18 @@ void setup(void) {
 
 #endif // End SAMD-specific SPI DMA init
 
-#ifdef DISPLAY_BACKLIGHT
+#if defined(DISPLAY_BACKLIGHT) && !defined(BACKLIGHT_MIN)
+  // Turn on the backlight, unless it's adaptive (in which case we'll
+  // turn it on in the frame).
+#ifdef SERIAL_MSGS
   Serial.println("Backlight on!");
+#endif
   analogWrite(DISPLAY_BACKLIGHT, BACKLIGHT_MAX);
 #endif
 
+#ifdef SERIAL_MSGS
   startTime = millis(); // For frame-rate calculation
+#endif
 }
 
 
@@ -390,7 +435,11 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
         p = 0;
       } else if((irisY < 0) || (irisY >= IRIS_HEIGHT) ||
                 (irisX < 0) || (irisX >= IRIS_WIDTH)) { // In sclera
+#ifdef FLAT_SCLERA
+        p = FLAT_SCLERA;
+#else
         p = sclera[scleraY][scleraX];
+#endif
       } else {                                          // Maybe iris...
         p = polar[irisY][irisX];                        // Polar angle/dist
         d = p & 0x7F;                                   // Distance from edge (0-127)
@@ -399,7 +448,11 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
           a = (IRIS_MAP_WIDTH * (p >> 7)) / 512;        // Angle (X)
           p = iris[d][a];                               // Pixel = iris
         } else {                                        // Not in iris
+#ifdef FLAT_SCLERA
+          p = FLAT_SCLERA;
+#else
           p = sclera[scleraY][scleraX];                 // Pixel = sclera
+#endif
         }
       }
 #ifdef ARDUINO_ARCH_SAMD
@@ -457,15 +510,17 @@ uint32_t timeOfLastBlink = 0L, timeToNextBlink = 0L;
 
 void frame( // Process motion for a single frame of left or right eye
   uint16_t        iScale) {     // Iris scale (0-1023) passed in
-  static uint32_t frames   = 0; // Used in frame rate calculation
   static uint8_t  eyeIndex = 0; // eye[] array counter
   int16_t         eyeX, eyeY;
   uint32_t        t = micros(); // Time at start of function
 
+#ifdef SERIAL_MSGS
+  static uint32_t frames   = 0; // Used in frame rate calculation
   if(!(++frames & 255)) { // Every 256 frames...
     uint32_t elapsed = (millis() - startTime) / 1000;
     if(elapsed) Serial.println(frames / elapsed); // Print FPS
   }
+#endif
 
   if(++eyeIndex >= NUM_EYES) eyeIndex = 0; // Cycle through eyes, 1 per call
 
@@ -521,9 +576,37 @@ void frame( // Process motion for a single frame of left or right eye
     if(dt > eyeMoveDuration) {            // Time up?  Begin new move.
       int16_t  dx, dy;
       uint32_t d;
+#ifdef ACCEL
+      accel.read();
+#endif
       do {                                // Pick new dest in circle
         eyeNewX = random(1024);
+#ifdef ACCEL
+        // We constrain this to [32,960] instead of [0,1023] to
+        // provide sufficient slack for the possible X values.
+        // Otherwise, the eye would be stuck at the X center when it's
+        // looking up.
+#ifdef ACCEL_TRIG
+        // This uses the Maclauren series approximation of the arcsine
+        // to avoid needing to link in the floating-point math
+        // libraries.
+        float asinzg = accel.z_g +
+            .075 * accel.z_g * accel.z_g * accel.z_g * accel.z_g * accel.z_g +
+            accel.z_g * accel.z_g * accel.z_g / 6;
+        eyeNewY = constrain(map(
+            asinzg * 1000, ACCEL_MIN, ACCEL_MAX, 32, 960), 32, 960);
+#else
+        // sin(x) is approximately x near 0, so if you're limiting
+        // near about +/-0.5g, this is fine.
+        eyeNewY = constrain(map(
+            accel.z_g * 1000, ACCEL_MIN, ACCEL_MAX, 32, 960), 32, 960);
+#endif
+        // Add a random amount of vertical movement.
+        eyeNewY += random(ACCEL_SACCADE) - (ACCEL_SACCADE/2);
+        eyeNewY = constrain(eyeNewY, 0, 1023);
+#else
         eyeNewY = random(1024);
+#endif
         dx      = (eyeNewX * 2) - 1023;
         dy      = (eyeNewY * 2) - 1023;
       } while((d = (dx * dx + dy * dy)) > (1023 * 1023)); // Keep trying
@@ -703,12 +786,55 @@ void loop() {
 #ifdef LIGHT_CURVE  // Apply gamma curve to sensor input?
   v = (int16_t)(pow((double)v / (double)(LIGHT_MAX - LIGHT_MIN),
     LIGHT_CURVE) * (double)(LIGHT_MAX - LIGHT_MIN));
+#elif defined(FAKE_LIGHT_CURVE)
+  // This approximates a cube root, but with cheap linear
+  // computations.  One way to do this would be with the binomial
+  // series expansion, but that has a serious bias near x=0 unless you
+  // have lots of terms (more than we want).  I don't know of another
+  // Taylor series expansion with integer exponents (which we need to
+  // avoid calling pow).  Instead, we do this with a piecewise linear
+  // approximation to a cube root (over vd=[0,1]).
+  float vd = (float)v / (float)(LIGHT_MAX - LIGHT_MIN);
+  float vc =
+      vd <= 0.0625 ? 6.34960 * vd :
+      vd <= 0.125  ? 1.65040 * vd + 0.293701 :
+      vd <= 0.25   ? 1.03968 * vd + 0.370039 :
+      vd <= 0.5    ? 0.65496 * vd + 0.466221 :
+      /* else */     0.41260 * vd + 0.587401;
+  v = vc * (LIGHT_MAX - LIGHT_MIN);
 #endif
+
+#ifdef BACKLIGHT_MIN
+  // Put a low-pass filter on the reading and use it to feed the backlight.
+  static uint32_t backlight_accum =
+      (BACKLIGHT_MAX + BACKLIGHT_MIN) / 2 * BL_RESPONSE_TIME;
+  // For the LPF we're using to produce outputs from BACKLIGHT_MIN to
+  // BACKLIGHT_MAX, we need to have its inputs that can slightly exceed
+  // that.
+  int new_backlight_target =
+      map(v, (LIGHT_MAX - LIGHT_MIN), 0, BACKLIGHT_MAX + 1, BACKLIGHT_MIN);
+  backlight_accum =
+      (backlight_accum * (BL_RESPONSE_TIME - 1) / BL_RESPONSE_TIME)
+      + new_backlight_target;
+  int new_backlight = backlight_accum / BL_RESPONSE_TIME;
+#if defined(ARDUINO_ARCH_SAMD) && BACKLIGHT_MAX == 256
+  // See https://learn.adafruit.com/adafruit-hallowing/adapting-sketches-to-m0#analogwrite-pwm-range-7-7
+  if (new_backlight == 256)
+    digitalWrite(DISPLAY_BACKLIGHT, HIGH);
+  else
+    analogWrite(DISPLAY_BACKLIGHT, backlight_accum / BL_RESPONSE_TIME);
+#else
+  analogWrite(DISPLAY_BACKLIGHT, backlight_accum / BL_RESPONSE_TIME);
+#endif
+#endif
+
   // And scale to iris range (IRIS_MAX is size at LIGHT_MIN)
   v = map(v, 0, (LIGHT_MAX - LIGHT_MIN), IRIS_MAX, IRIS_MIN);
 #ifdef IRIS_SMOOTH // Filter input (gradual motion)
   static int16_t irisValue = (IRIS_MIN + IRIS_MAX) / 2;
-  irisValue = ((irisValue * 15) + v) / 16;
+  irisValue = (v < irisValue ?
+               ((irisValue * 3) + v) / 4 :
+               ((irisValue * 31) + v) / 32);
   frame(irisValue);
 #else // Unfiltered (immediate motion)
   frame(v);
