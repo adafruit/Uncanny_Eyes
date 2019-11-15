@@ -95,10 +95,10 @@ struct {                // One-per-eye structure
   // DMA transfer-in-progress indicator and callback
   static volatile bool dma_busy = false;
   static void dma_callback(Adafruit_ZeroDMA *dma) { dma_busy = false; }
-#elif defined(ARDUINO_NRF52840_CIRCUITPLAY)
+#elif defined(ARDUINO_ARCH_NRF52)
   uint8_t           dmaIdx = 0; // Active DMA buffer # (alternate fill/send)
  #ifdef PIXEL_DOUBLE
-  uint32_t          dmaBuf[2][120]; // Two 120-pixel buffers (32bit for doubling)
+  uint32_t          dmaBuf[2][240]; // Two 240-pixel buffers (32bit for doubling)
  #else
   uint16_t          dmaBuf[2][128]; // Two 128-pixel buffers
  #endif
@@ -469,7 +469,16 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
     dma.startJob();
 #elif defined(ARDUINO_ARCH_NRF52)
  #ifdef PIXEL_DOUBLE
-    eye[e].display->writePixels((uint16_t *)&dmaBuf[dmaIdx], sizeof dmaBuf[0] / 2, false, true);
+    // On nRF52, copy scanline so a single writePixels() call can be used.
+    // At present, this is a few FPS slower than two writePixels() calls
+    // of the same data, but the idea is that writePixels() could be
+    // updated on nRF52 to allow non-blocking DMA transfers (while it does
+    // use DMA for the transfer and avoids inter-byte delays, it currently
+    // always blocks and can't use that transfer time for other tasks, as
+    // the SAMD code does). Should get a sizable boost from that, so it's
+    // written here with that in mind for the future...
+    uint16_t *base = (uint16_t *)&dmaBuf[dmaIdx];
+    memcpy(&base[240], base, 480);
  #endif
     // Block on last scanline
     eye[e].display->writePixels((uint16_t *)&dmaBuf[dmaIdx], sizeof dmaBuf[0] / 2, (screenY == (SCREEN_Y_END-1)), true);
@@ -479,7 +488,8 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
 
 #ifdef ARDUINO_ARCH_SAMD
   while(dma_busy);  // Wait for last scanline to transmit
-#elif !defined(ARDUINO_NRF52840_CIRCUITPLAY)
+#elif !defined(ARDUINO_ARCH_NRF52)
+  // Teensy 3.x
   KINETISK_SPI0.SR |= SPI_SR_TCF;         // Clear transfer flag
   while((KINETISK_SPI0.SR & 0xF000) ||    // Wait for SPI FIFO to drain
        !(KINETISK_SPI0.SR & SPI_SR_TCF)); // Wait for last bit out
