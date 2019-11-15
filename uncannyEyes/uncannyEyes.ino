@@ -85,16 +85,23 @@ struct {                // One-per-eye structure
   // multi-line buffering made no appreciable difference.
   uint8_t           dmaIdx = 0; // Active DMA buffer # (alternate fill/send)
   Adafruit_ZeroDMA  dma;
-#ifdef PIXEL_DOUBLE
+ #ifdef PIXEL_DOUBLE
   uint32_t          dmaBuf[2][120]; // Two 120-pixel buffers (32bit for doubling)
   DmacDescriptor   *descriptor[2];  // Pair of descriptors for doubled scanlines
-#else
+ #else
   uint16_t          dmaBuf[2][128]; // Two 128-pixel buffers
   DmacDescriptor   *descriptor;     // Single active DMA descriptor
-#endif
+ #endif
   // DMA transfer-in-progress indicator and callback
   static volatile bool dma_busy = false;
   static void dma_callback(Adafruit_ZeroDMA *dma) { dma_busy = false; }
+#elif defined(ARDUINO_NRF52840_CIRCUITPLAY)
+  uint8_t           dmaIdx = 0; // Active DMA buffer # (alternate fill/send)
+ #ifdef PIXEL_DOUBLE
+  uint32_t          dmaBuf[2][120]; // Two 120-pixel buffers (32bit for doubling)
+ #else
+  uint16_t          dmaBuf[2][128]; // Two 128-pixel buffers
+ #endif
 #endif
 
 uint32_t startTime;  // For FPS indicator
@@ -239,6 +246,7 @@ void setup(void) {
   #ifdef DISPLAY_BACKLIGHT
     int i;
     Serial.println("Fade in backlight");
+    analogWriteResolution(8);
     for(i=0; i<BACKLIGHT_MAX; i++) { // Fade logo in
       analogWrite(DISPLAY_BACKLIGHT, i);
       delay(2);
@@ -408,12 +416,12 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
   scleraXsave = scleraX + SCREEN_X_START; // Save initial X value to reset on each line
   irisY       = scleraY - (SCLERA_HEIGHT - IRIS_HEIGHT) / 2;
   for(screenY=SCREEN_Y_START; screenY<SCREEN_Y_END; screenY++, scleraY++, irisY++) {
-#ifdef ARDUINO_ARCH_SAMD
-#ifdef PIXEL_DOUBLE
+#if defined(ARDUINO_ARCH_SAMD) || defined(ARDUINO_ARCH_NRF52)
+ #ifdef PIXEL_DOUBLE
     uint32_t *ptr = &dmaBuf[dmaIdx][0];
-#else
+ #else
     uint16_t *ptr = &dmaBuf[dmaIdx][0];
-#endif
+ #endif
 #endif
     scleraX = scleraXsave;
     irisX   = scleraXsave - (SCLERA_WIDTH - IRIS_WIDTH) / 2;
@@ -435,13 +443,13 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
           p = sclera[scleraY][scleraX];                 // Pixel = sclera
         }
       }
-#ifdef ARDUINO_ARCH_SAMD
-#ifdef PIXEL_DOUBLE
+#if defined(ARDUINO_ARCH_SAMD) || defined(ARDUINO_ARCH_NRF52)
+ #ifdef PIXEL_DOUBLE
       // Swap bytes, duplicate low 16 to high 16 bits, store in DMA buf
       *ptr++ = __builtin_bswap16(p) * 0x00010001;
-#else
+ #else
       *ptr++ = __builtin_bswap16(p); // DMA: store in scanline buffer
-#endif
+ #endif
 #else
       // SPI FIFO technique from Paul Stoffregen's ILI9341_t3 library:
       while(KINETISK_SPI0.SR & 0xC000); // Wait for space in FIFO
@@ -450,21 +458,28 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
     } // end column
 #ifdef ARDUINO_ARCH_SAMD
     while(dma_busy); // Wait for prior DMA xfer to finish
-#ifdef PIXEL_DOUBLE
+ #ifdef PIXEL_DOUBLE
     descriptor[0]->SRCADDR.reg = descriptor[1]->SRCADDR.reg =
       (uint32_t)&dmaBuf[dmaIdx] + sizeof dmaBuf[0];
-#else
+ #else
     descriptor->SRCADDR.reg = (uint32_t)&dmaBuf[dmaIdx] + sizeof dmaBuf[0];
-#endif
+ #endif
     dma_busy = true;
     dmaIdx   = 1 - dmaIdx;
     dma.startJob();
+#elif defined(ARDUINO_ARCH_NRF52)
+ #ifdef PIXEL_DOUBLE
+    eye[e].display->writePixels((uint16_t *)&dmaBuf[dmaIdx], sizeof dmaBuf[0] / 2, false, true);
+ #endif
+    // Block on last scanline
+    eye[e].display->writePixels((uint16_t *)&dmaBuf[dmaIdx], sizeof dmaBuf[0] / 2, (screenY == (SCREEN_Y_END-1)), true);
+    dmaIdx = 1 - dmaIdx;
 #endif
   } // end scanline
 
 #ifdef ARDUINO_ARCH_SAMD
   while(dma_busy);  // Wait for last scanline to transmit
-#else
+#elif !defined(ARDUINO_NRF52840_CIRCUITPLAY)
   KINETISK_SPI0.SR |= SPI_SR_TCF;         // Clear transfer flag
   while((KINETISK_SPI0.SR & 0xF000) ||    // Wait for SPI FIFO to drain
        !(KINETISK_SPI0.SR & SPI_SR_TCF)); // Wait for last bit out

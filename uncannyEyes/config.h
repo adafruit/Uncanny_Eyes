@@ -9,7 +9,7 @@
 // uses a simpler "football-shaped" eye that's left/right symmetrical.
 // Default shape includes the caruncle, creating distinct left/right eyes.
 // Hallowing, with one eye, does this by default
-#if defined(ADAFRUIT_HALLOWING) || defined(ARDUINO_SAMD_CIRCUITPLAYGROUND_EXPRESS)
+#if defined(ADAFRUIT_HALLOWING) || defined(ARDUINO_SAMD_CIRCUITPLAYGROUND_EXPRESS) || defined(ARDUINO_NRF52840_CIRCUITPLAY)
   #define SYMMETRICAL_EYELID
 #else                     // Otherwise your choice, standard is asymmetrical
   //#define SYMMETRICAL_EYELID
@@ -43,7 +43,7 @@
 eyeInfo_t eyeInfo[] = {
 #if defined(ADAFRUIT_HALLOWING)
   { 39, -1, 2 }, // SINGLE EYE display-select and wink pins, rotate 180
-#elif defined(ARDUINO_SAMD_CIRCUITPLAYGROUND_EXPRESS)
+#elif defined(ARDUINO_SAMD_CIRCUITPLAYGROUND_EXPRESS) || defined(ARDUINO_NRF52840_CIRCUITPLAY)
   { A6, -1, 2 }, // SINGLE EYE display-select and wink pins, rotate 180
 #elif defined(ADAFRUIT_TRINKET_M0)
   {  0, -1, 0 }, // SINGLE EYE display-select, no wink, no rotation
@@ -72,7 +72,7 @@ eyeInfo_t eyeInfo[] = {
   //#define SYNCPIN         A2  // I2C sync if set, GND this pin on receiver
   //#define SYNCADDR      0x08  // I2C address of receiver
                                 // (Try disabling SYMMETRICAL_EYELID then)
-#elif defined(ARDUINO_SAMD_CIRCUITPLAYGROUND_EXPRESS)
+#elif defined(ARDUINO_SAMD_CIRCUITPLAYGROUND_EXPRESS) || defined(ARDUINO_NRF52840_CIRCUITPLAY)
   #include <Adafruit_ST7789.h> // 240x240 TFT display library
   #define DISPLAY_DC        A7 // Display data/command pin
   #define DISPLAY_RESET     -1 // Display reset pin
@@ -92,7 +92,11 @@ eyeInfo_t eyeInfo[] = {
 #endif
 
 #if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_)
+ #if defined(ARDUINO_ARCH_NRF52)
+  #define SPI_FREQ 32000000    // TFT: use max SPI
+ #else
   #define SPI_FREQ 24000000    // TFT: use max SPI
+ #endif
 #else // OLED
   #if !defined(ARDUINO_ARCH_SAMD) && (F_CPU <= 72000000)
     #define SPI_FREQ 24000000  // OLED: 24 MHz on 72 MHz Teensy only
@@ -125,7 +129,7 @@ eyeInfo_t eyeInfo[] = {
   #define LIGHT_CURVE  0.33 // Light sensor adjustment curve
   #define LIGHT_MIN      30 // Minimum useful reading from light sensor
   #define LIGHT_MAX     980 // Maximum useful reading from sensor
-#elif defined(ARDUINO_SAMD_CIRCUITPLAYGROUND_EXPRESS) // TFT Gizmo
+#elif defined(ARDUINO_SAMD_CIRCUITPLAYGROUND_EXPRESS) || defined(ARDUINO_NRF52840_CIRCUITPLAY) // TFT Gizmo
   #define LIGHT_PIN      A8 // CPX light sensor pin
   #define LIGHT_CURVE  0.33 // Light sensor adjustment curve
   #define LIGHT_MIN      30 // Minimum useful reading from light sensor
