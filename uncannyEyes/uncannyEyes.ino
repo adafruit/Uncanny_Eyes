@@ -31,7 +31,30 @@ typedef struct {        // Struct is defined before including config.h --
 
 #include "config.h"     // ****** CONFIGURATION IS DONE IN HERE ******
 
-#if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_)
+#ifdef PIXEL_DOUBLE
+  // For the 240x240 TFT, pixels are rendered in 2x2 blocks for an
+  // effective resolution of 120x120. M0 boards just don't have the
+  // space or speed to handle an eye at the full resolution of this
+  // display (and for M4 boards, take a look at the M4_Eyes project
+  // instead). 120x120 doesn't quite match the resolution of the
+  // TFT & OLED this project was originally developed for. Rather
+  // than make an entirely new alternate set of graphics for every
+  // eye (would be a huge undertaking), this currently just crops
+  // four pixels all around the perimeter.
+  #define SCREEN_X_START 4
+  #define SCREEN_X_END   (SCREEN_WIDTH - 4)
+  #define SCREEN_Y_START 4
+  #define SCREEN_Y_END   (SCREEN_HEIGHT - 4)
+#else
+  #define SCREEN_X_START 0
+  #define SCREEN_X_END   SCREEN_WIDTH
+  #define SCREEN_Y_START 0
+  #define SCREEN_Y_END   SCREEN_HEIGHT
+#endif
+
+#if defined(_ADAFRUIT_ST7789H_)
+  typedef Adafruit_ST7789  displayType; // Using 240x240 TFT display(s)
+#elif defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_)
   typedef Adafruit_ST7735  displayType; // Using TFT display(s)
 #else
   typedef Adafruit_SSD1351 displayType; // Using OLED display(s)
@@ -56,14 +79,19 @@ struct {                // One-per-eye structure
 
 #ifdef ARDUINO_ARCH_SAMD
   // SAMD boards use DMA (Teensy uses SPI FIFO instead):
-  // Two single-line 128-pixel buffers (16bpp) are used for DMA.
+  // Two single-scanline pixel buffers are used for DMA,
+  // alternating rendering and transferring between them.
   // Though you'd think fewer larger transfers would improve speed,
   // multi-line buffering made no appreciable difference.
-  uint16_t          dmaBuf[2][128];
   uint8_t           dmaIdx = 0; // Active DMA buffer # (alternate fill/send)
   Adafruit_ZeroDMA  dma;
-  DmacDescriptor   *descriptor;
-
+#ifdef PIXEL_DOUBLE
+  uint32_t          dmaBuf[2][120]; // Two 120-pixel buffers (32bit for doubling)
+  DmacDescriptor   *descriptor[2];  // Pair of descriptors for doubled scanlines
+#else
+  uint16_t          dmaBuf[2][128]; // Two 128-pixel buffers
+  DmacDescriptor   *descriptor;     // Single active DMA descriptor
+#endif
   // DMA transfer-in-progress indicator and callback
   static volatile bool dma_busy = false;
   static void dma_callback(Adafruit_ZeroDMA *dma) { dma_busy = false; }
@@ -129,7 +157,10 @@ void setup(void) {
   // Initialize eye objects based on eyeInfo list in config.h:
   for(e=0; e<NUM_EYES; e++) {
     Serial.print("Create display #"); Serial.println(e);
-#if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_) // TFT
+#if defined(_ADAFRUIT_ST7789H_) // 240x240 TFT
+    eye[e].display     = new displayType(&TFT_SPI, eyeInfo[e].select,
+                           DISPLAY_DC, -1);
+#elif defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_) // 128x128 TFT
     eye[e].display     = new displayType(&TFT_SPI, eyeInfo[e].select,
                            DISPLAY_DC, -1);
 #else // OLED
@@ -167,11 +198,13 @@ void setup(void) {
 
   // After all-displays reset, now call init/begin func for each display:
   for(e=0; e<NUM_EYES; e++) {
-#if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_) // TFT
+#if defined(_ADAFRUIT_ST7789H_) // 240x240 TFT
+    eye[e].display->init(240, 240);
+#elif defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_) // 128x128 TFT
     eye[e].display->initR(INITR_144GREENTAB);
     Serial.print("Init ST77xx display #"); Serial.println(e);
 #else // OLED
-    eye[e].display->begin();
+    eye[e].display->begin(SPI_FREQ);
 #endif
     Serial.println("Rotate");
     eye[e].display->setRotation(eyeInfo[e].rotation);
@@ -179,28 +212,30 @@ void setup(void) {
   Serial.println("done");
 
 #if defined(LOGO_TOP_WIDTH) || defined(COLOR_LOGO_WIDTH)
-  Serial.println("Display logo");
   // I noticed lots of folks getting right/left eyes flipped, or
   // installing upside-down, etc.  Logo split across screens may help:
+  int x = eye[0].display->width() * NUM_EYES / 2;
+  int y = (eye[0].display->height() - SCREEN_HEIGHT) / 2;
   for(e=0; e<NUM_EYES; e++) { // Another pass, after all screen inits
     eye[e].display->fillScreen(0);
     #ifdef LOGO_TOP_WIDTH
       // Monochrome Adafruit logo is 2 mono bitmaps:
-      eye[e].display->drawBitmap(NUM_EYES*64 - e*128 - 20,
-        0, logo_top, LOGO_TOP_WIDTH, LOGO_TOP_HEIGHT, 0xFFFF);
-      eye[e].display->drawBitmap(NUM_EYES*64 - e*128 - LOGO_BOTTOM_WIDTH/2,
-        LOGO_TOP_HEIGHT, logo_bottom, LOGO_BOTTOM_WIDTH, LOGO_BOTTOM_HEIGHT,
+      eye[e].display->drawBitmap(x - LOGO_TOP_WIDTH / 2 - 20,
+        y, logo_top, LOGO_TOP_WIDTH, LOGO_TOP_HEIGHT, 0xFFFF);
+      eye[e].display->drawBitmap(x - LOGO_BOTTOM_WIDTH/2,
+        y + LOGO_TOP_HEIGHT, logo_bottom, LOGO_BOTTOM_WIDTH, LOGO_BOTTOM_HEIGHT,
         0xFFFF);
     #else
       // Color sponsor logo is one RGB bitmap:
       eye[e].display->fillScreen(color_logo[0]);
-      eye[0].display->drawRGBBitmap(
+      eye[e].display->drawRGBBitmap(
         (eye[e].display->width()  - COLOR_LOGO_WIDTH ) / 2,
         (eye[e].display->height() - COLOR_LOGO_HEIGHT) / 2,
         color_logo, COLOR_LOGO_WIDTH, COLOR_LOGO_HEIGHT);
     #endif
-    // After logo is drawn
+    x -= eye[e].display->width();
   }
+  // After logo is drawn
   #ifdef DISPLAY_BACKLIGHT
     int i;
     Serial.println("Fade in backlight");
@@ -230,7 +265,9 @@ void setup(void) {
 #if defined(SYNCPIN) && (SYNCPIN >= 0)
   if(receiver) {
 #endif
-#if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_) // TFT
+#if defined(_ADAFRUIT_ST7789H_) // 240x240 TFT
+    // MAYBE TODO: HANDLE 240x240 TFT MIRRORING HERE
+#elif defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_) // TFT
     const uint8_t mirrorTFT[]  = { 0x88, 0x28, 0x48, 0xE8 }; // Mirror+rotate
     eye[0].display->sendCommand(
     #ifdef ST77XX_MADCTL
@@ -257,42 +294,26 @@ void setup(void) {
 
 #ifdef ARDUINO_ARCH_SAMD
   // Set up SPI DMA on SAMD boards:
-  int                dmac_id;
-  volatile uint32_t *data_reg;
-  if(&TFT_PERIPH == &sercom0) {
-    dmac_id  = SERCOM0_DMAC_ID_TX;
-    data_reg = &SERCOM0->SPI.DATA.reg;
-#if defined SERCOM1
-  } else if(&TFT_PERIPH == &sercom1) {
-    dmac_id  = SERCOM1_DMAC_ID_TX;
-    data_reg = &SERCOM1->SPI.DATA.reg;
-#endif
-#if defined SERCOM2
-  } else if(&TFT_PERIPH == &sercom2) {
-    dmac_id  = SERCOM2_DMAC_ID_TX;
-    data_reg = &SERCOM2->SPI.DATA.reg;
-#endif
-#if defined SERCOM3
-  } else if(&TFT_PERIPH == &sercom3) {
-    dmac_id  = SERCOM3_DMAC_ID_TX;
-    data_reg = &SERCOM3->SPI.DATA.reg;
-#endif
-#if defined SERCOM4
-  } else if(&TFT_PERIPH == &sercom4) {
-    dmac_id  = SERCOM4_DMAC_ID_TX;
-    data_reg = &SERCOM4->SPI.DATA.reg;
-#endif
-#if defined SERCOM5
-  } else if(&TFT_PERIPH == &sercom5) {
-    dmac_id  = SERCOM5_DMAC_ID_TX;
-    data_reg = &SERCOM5->SPI.DATA.reg;
-#endif
-  }
+  int                dmac_id  = TFT_SPI.getDMAC_ID_TX();
+  volatile uint32_t *data_reg = TFT_SPI.getDataRegister();
 
   Serial.println("DMA init");
   dma.allocate();
   dma.setTrigger(dmac_id);
   dma.setAction(DMA_TRIGGER_ACTON_BEAT);
+#ifdef PIXEL_DOUBLE
+  // A chain of 2 linked descriptors point to the same buffer.
+  // Poof, doubled scanlines.
+  for(uint8_t i=0; i<2; i++) {
+    descriptor[i] = dma.addDescriptor(
+      NULL,               // move data
+      (void *)data_reg,   // to here
+      sizeof dmaBuf[0],   // this many...
+      DMA_BEAT_SIZE_BYTE, // bytes/hword/words
+      true,               // increment source addr?
+      false);             // increment dest addr?
+  }
+#else
   descriptor = dma.addDescriptor(
     NULL,               // move data
     (void *)data_reg,   // to here
@@ -300,6 +321,7 @@ void setup(void) {
     DMA_BEAT_SIZE_BYTE, // bytes/hword/words
     true,               // increment source addr?
     false);             // increment dest addr?
+#endif
   dma.setCallback(dma_callback);
 
 #endif // End SAMD-specific SPI DMA init
@@ -355,6 +377,11 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
   }
 #endif
 
+#ifdef PIXEL_DOUBLE
+  scleraX += 4;
+  scleraY += 4;
+#endif
+
   uint8_t  irisThreshold = (128 * (1023 - iScale) + 512) / 1024;
   uint32_t irisScale     = IRIS_MAP_HEIGHT * 65536 / irisThreshold;
 
@@ -362,8 +389,11 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
   // around automatically from end of rect back to beginning, the region is
   // reset on each frame here in case of an SPI glitch.
   TFT_SPI.beginTransaction(settings);
-  digitalWrite(eyeInfo[e].select, LOW);                        // Chip select
-#if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_) // TFT
+  digitalWrite(eyeInfo[e].select, LOW);                // Chip select
+
+#if defined(_ADAFRUIT_ST7789H_) // 240x240 TFT
+  eye[e].display->setAddrWindow(0, 0, 240, 240);
+#elif defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_) // TFT
   eye[e].display->setAddrWindow(0, 0, 128, 128);
 #else // OLED
   eye[e].display->writeCommand(SSD1351_CMD_SETROW);    // Y range
@@ -375,16 +405,19 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
   digitalWrite(eyeInfo[e].select, LOW);                // Re-chip-select
   digitalWrite(DISPLAY_DC, HIGH);                      // Data mode
   // Now just issue raw 16-bit values for every pixel...
-
-  scleraXsave = scleraX; // Save initial X value to reset on each line
+  scleraXsave = scleraX + SCREEN_X_START; // Save initial X value to reset on each line
   irisY       = scleraY - (SCLERA_HEIGHT - IRIS_HEIGHT) / 2;
-  for(screenY=0; screenY<SCREEN_HEIGHT; screenY++, scleraY++, irisY++) {
+  for(screenY=SCREEN_Y_START; screenY<SCREEN_Y_END; screenY++, scleraY++, irisY++) {
 #ifdef ARDUINO_ARCH_SAMD
+#ifdef PIXEL_DOUBLE
+    uint32_t *ptr = &dmaBuf[dmaIdx][0];
+#else
     uint16_t *ptr = &dmaBuf[dmaIdx][0];
+#endif
 #endif
     scleraX = scleraXsave;
     irisX   = scleraXsave - (SCLERA_WIDTH - IRIS_WIDTH) / 2;
-    for(screenX=0; screenX<SCREEN_WIDTH; screenX++, scleraX++, irisX++) {
+    for(screenX=SCREEN_X_START; screenX<SCREEN_X_END; screenX++, scleraX++, irisX++) {
       if((lower[screenY][screenX] <= lT) ||
          (upper[screenY][screenX] <= uT)) {             // Covered by eyelid
         p = 0;
@@ -403,7 +436,12 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
         }
       }
 #ifdef ARDUINO_ARCH_SAMD
+#ifdef PIXEL_DOUBLE
+      // Swap bytes, duplicate low 16 to high 16 bits, store in DMA buf
+      *ptr++ = __builtin_bswap16(p) * 0x00010001;
+#else
       *ptr++ = __builtin_bswap16(p); // DMA: store in scanline buffer
+#endif
 #else
       // SPI FIFO technique from Paul Stoffregen's ILI9341_t3 library:
       while(KINETISK_SPI0.SR & 0xC000); // Wait for space in FIFO
@@ -412,7 +450,12 @@ void drawEye( // Renders one eye.  Inputs must be pre-clipped & valid.
     } // end column
 #ifdef ARDUINO_ARCH_SAMD
     while(dma_busy); // Wait for prior DMA xfer to finish
+#ifdef PIXEL_DOUBLE
+    descriptor[0]->SRCADDR.reg = descriptor[1]->SRCADDR.reg =
+      (uint32_t)&dmaBuf[dmaIdx] + sizeof dmaBuf[0];
+#else
     descriptor->SRCADDR.reg = (uint32_t)&dmaBuf[dmaIdx] + sizeof dmaBuf[0];
+#endif
     dma_busy = true;
     dmaIdx   = 1 - dmaIdx;
     dma.startJob();

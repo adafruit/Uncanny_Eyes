@@ -1,5 +1,5 @@
-#define IRIS_MIN 400
-#define IRIS_MAX 600
+#define IRIS_MIN 250
+#define IRIS_MAX 500
 
 #define SCLERA_WIDTH  180
 #define SCLERA_HEIGHT 180

@@ -8,7 +8,8 @@
 // If using a SINGLE EYE, you might want this next line enabled, which
 // uses a simpler "football-shaped" eye that's left/right symmetrical.
 // Default shape includes the caruncle, creating distinct left/right eyes.
-#if defined(ADAFRUIT_HALLOWING) || defined(ARDUINO_SAMD_CIRCUITPLAYGROUND_EXPRESS) // Hallowing, with one eye, does this by default
+// Hallowing, with one eye, does this by default
+#if defined(ADAFRUIT_HALLOWING) || defined(ARDUINO_SAMD_CIRCUITPLAYGROUND_EXPRESS)
   #define SYMMETRICAL_EYELID
 #else                     // Otherwise your choice, standard is asymmetrical
   //#define SYMMETRICAL_EYELID
@@ -43,7 +44,9 @@ eyeInfo_t eyeInfo[] = {
 #if defined(ADAFRUIT_HALLOWING)
   { 39, -1, 2 }, // SINGLE EYE display-select and wink pins, rotate 180
 #elif defined(ARDUINO_SAMD_CIRCUITPLAYGROUND_EXPRESS)
-  { A7, -1, 0 }, // SINGLE EYE display-select and wink pins, no rotate
+  { A6, -1, 2 }, // SINGLE EYE display-select and wink pins, rotate 180
+#elif defined(ADAFRUIT_TRINKET_M0)
+  {  0, -1, 0 }, // SINGLE EYE display-select, no wink, no rotation
 #else
   {  9, 0, 0 }, // LEFT EYE display-select and wink pins, no rotation
   { 10, 2, 0 }, // RIGHT EYE display-select and wink pins, no rotation
@@ -61,30 +64,35 @@ eyeInfo_t eyeInfo[] = {
 #endif
 
 #if defined(ADAFRUIT_HALLOWING)
-  #include <Adafruit_ST7735.h> // TFT display library
-  #define DISPLAY_DC       38  // Display data/command pin
-  #define DISPLAY_RESET    37  // Display reset pin
-  #define DISPLAY_BACKLIGHT 7
-  #define BACKLIGHT_MAX   128
-  //#define SYNCPIN        A2  // I2C sync if set, GND this pin on receiver
-  //#define SYNCADDR     0x08  // I2C address of receiver
-                               // (Try disabling SYMMETRICAL_EYELID then)
+  #include <Adafruit_ST7735.h>  // 128x128 TFT display library
+  #define DISPLAY_DC        38  // Display data/command pin
+  #define DISPLAY_RESET     37  // Display reset pin
+  #define DISPLAY_BACKLIGHT  7
+  #define BACKLIGHT_MAX    128
+  //#define SYNCPIN         A2  // I2C sync if set, GND this pin on receiver
+  //#define SYNCADDR      0x08  // I2C address of receiver
+                                // (Try disabling SYMMETRICAL_EYELID then)
 #elif defined(ARDUINO_SAMD_CIRCUITPLAYGROUND_EXPRESS)
-  #include <Adafruit_ST7735.h> // TFT display library
-  #define DISPLAY_DC       A6  // Display data/command pin
-  #define DISPLAY_RESET    -1  // Display reset pin
+  #include <Adafruit_ST7789.h> // 240x240 TFT display library
+  #define DISPLAY_DC        A7 // Display data/command pin
+  #define DISPLAY_RESET     -1 // Display reset pin
   #define DISPLAY_BACKLIGHT A3
-  #define BACKLIGHT_MAX   255
+  #define BACKLIGHT_MAX    255
 #else
   // Enable ONE of these #includes to specify the display type being used
-  #include <Adafruit_SSD1351.h>  // OLED display library -OR-
-  //#include <Adafruit_ST7735.h> // TFT display library (enable one only)
-  #define DISPLAY_DC        7    // Data/command pin for ALL displays
-  #define DISPLAY_RESET     8    // Reset pin for ALL displays
+  //#include <Adafruit_SSD1351.h>  // OLED display library -OR-
+  #include <Adafruit_ST7735.h>  // TFT display library (enable one only)
+  #if defined(ADAFRUIT_TRINKET_M0)
+    #define DISPLAY_DC       1
+    #define DISPLAY_RESET   -1 // Use MCU reset pin
+  #else
+    #define DISPLAY_DC       7  // Data/command pin for ALL displays
+    #define DISPLAY_RESET    8  // Reset pin for ALL displays
+  #endif
 #endif
 
 #if defined(_ADAFRUIT_ST7735H_) || defined(_ADAFRUIT_ST77XXH_)
-  #define SPI_FREQ 24000000    // TFT: use max SPI (clips to 12 MHz on M0)
+  #define SPI_FREQ 24000000    // TFT: use max SPI
 #else // OLED
   #if !defined(ARDUINO_ARCH_SAMD) && (F_CPU <= 72000000)
     #define SPI_FREQ 24000000  // OLED: 24 MHz on 72 MHz Teensy only
@@ -117,14 +125,18 @@ eyeInfo_t eyeInfo[] = {
   #define LIGHT_CURVE  0.33 // Light sensor adjustment curve
   #define LIGHT_MIN      30 // Minimum useful reading from light sensor
   #define LIGHT_MAX     980 // Maximum useful reading from sensor
-#elif defined(ARDUINO_SAMD_CIRCUITPLAYGROUND_EXPRESS)
+#elif defined(ARDUINO_SAMD_CIRCUITPLAYGROUND_EXPRESS) // TFT Gizmo
   #define LIGHT_PIN      A8 // CPX light sensor pin
   #define LIGHT_CURVE  0.33 // Light sensor adjustment curve
   #define LIGHT_MIN      30 // Minimum useful reading from light sensor
   #define LIGHT_MAX     980 // Maximum useful reading from sensor
-  #define BLINK_PIN      4 //  Button
+  #define BLINK_PIN       4 // Pin for manual blink button (BOTH eyes)
+  #define PIXEL_DOUBLE      // Use 2x2 pixels on 240x240 display
+#elif defined(ADAFRUIT_TRINKET_M0)
+  #define BLINK_PIN      -1 // No blink pin
+  #define LIGHT_PIN      -1 // No photocell
 #else
-  #define BLINK_PIN         1 // Pin for manual blink button (BOTH eyes)
+  #define BLINK_PIN       1 // Pin for manual blink button (BOTH eyes)
   #define LIGHT_PIN      A2 // Photocell or potentiometer (else auto iris)
 //#define LIGHT_PIN_FLIP    // If defined, reverse reading from dial/photocell
   #define LIGHT_MIN       0 // Lower reading from sensor
