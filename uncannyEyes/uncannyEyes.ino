@@ -201,6 +201,12 @@ void setup(void) {
   // Alternately, all display reset pin(s) could be connected to the
   // microcontroller reset, in which case DISPLAY_RESET should be set
   // to -1 or left undefined in config.h.
+#else
+  // If no DISPLAY_RESET pin is defined, the board might have an auto-
+  // reset circuit for the display (e.g. TFT Gizmo). Pause for just a
+  // tiny moment to allow it to work, otherwise commands will be issued
+  // too soon and the display won't correctly initialize.
+  delay(75);
 #endif
 
   // After all-displays reset, now call init/begin func for each display:
@@ -247,7 +253,7 @@ void setup(void) {
     int i;
     Serial.println("Fade in backlight");
     analogWriteResolution(8);
-    for(i=0; i<BACKLIGHT_MAX; i++) { // Fade logo in
+    for(i=0; i<=BACKLIGHT_MAX; i++) { // Fade logo in
       analogWrite(DISPLAY_BACKLIGHT, i);
       delay(2);
     }
