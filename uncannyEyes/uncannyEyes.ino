@@ -31,6 +31,9 @@ typedef struct {        // Struct is defined before including config.h --
 
 #include "config.h"     // ****** CONFIGURATION IS DONE IN HERE ******
 
+extern void user_setup(void); // Functions in the user*.cpp files
+extern void user_loop(void);
+
 #ifdef PIXEL_DOUBLE
   // For the 240x240 TFT, pixels are rendered in 2x2 blocks for an
   // effective resolution of 120x120. M0 boards just don't have the
@@ -160,6 +163,8 @@ void setup(void) {
   pinMode(DISPLAY_BACKLIGHT, OUTPUT);
   digitalWrite(DISPLAY_BACKLIGHT, LOW);
 #endif
+
+  user_setup();
 
   // Initialize eye objects based on eyeInfo list in config.h:
   for(e=0; e<NUM_EYES; e++) {
@@ -722,6 +727,10 @@ void frame( // Process motion for a single frame of left or right eye
 
   // Pass all the derived values to the eye-rendering function:
   drawEye(eyeIndex, iScale, eyeX, eyeY, n, lThreshold);
+
+  if(eyeIndex == (NUM_EYES - 1)) {
+    user_loop(); // Call user code after rendering last eye
+  }
 }
 
 // AUTONOMOUS IRIS SCALING (if no photocell or dial) -----------------------
