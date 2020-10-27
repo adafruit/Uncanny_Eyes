@@ -10,15 +10,12 @@
 #define CAPTOUCH_PIN A5 // Capacitive touch pin - attach conductive thread here
 #define SERVO_PIN     4 // Servo plugged in here
 
-// Capacitive touch sensitivity: watch the Serial Monitor for cap touch value,
-// note the "on" and "off" values, then set this to something in-between.
-#define TOUCH_THRESHOLD 500
-
 // Set up capacitive touch button using the FreeTouch library
 static Adafruit_FreeTouch touch(CAPTOUCH_PIN, OVERSAMPLE_4, RESISTOR_50K, FREQ_MODE_NONE);
 static long     oldState;          // Last-read touch value
 static bool     isTouched = false; // When true, bat is flapping
 static uint32_t touchTime = 0;     // millis() time when flapping started
+static uint32_t touchThreshold;
 
 Servo servo;
 
@@ -27,8 +24,19 @@ void user_setup(void) {
     Serial.println("Cap touch init failed");
   servo.attach(SERVO_PIN);
   servo.write(0); // Move servo to idle position
-  oldState = touch.measure();
   servo.detach();
+
+  // Attempt to auto-calibrate the touch threshold
+  // (assumes thread is NOT touched on startup!)
+  touchThreshold = 0;
+  for(int i=0; i<10; i++) {
+    touchThreshold += touch.measure(); // Accumulate 10 readings
+    delay(50);
+  }
+  touchThreshold /= 10; // Average "not touched" value
+  touchThreshold = ((touchThreshold * 127) + 1023) / 128; // Threshold = ~1% toward max
+
+  oldState = touch.measure();
 }
 
 #define FLAP_TIME_RISING   900 // 0-to-180 degree servo sweep time, in milliseconds
@@ -57,11 +65,11 @@ void user_loop(void) {
     }
   } else {
     // Bat is idle...check for capacitive touch...
-    if (newState > TOUCH_THRESHOLD && oldState < TOUCH_THRESHOLD) {
-      delay(100);                       // Short delay to debounce
-      newState = touch.measure();       // Verify whether still touched
-      if (newState > TOUCH_THRESHOLD) { // It is!
-        isTouched = true;               // Start a new flap session
+    if (newState > touchThreshold && oldState < touchThreshold) {
+      delay(100);                      // Short delay to debounce
+      newState = touch.measure();      // Verify whether still touched
+      if (newState > touchThreshold) { // It is!
+        isTouched = true;              // Start a new flap session
         touchTime = millis();
         servo.attach(SERVO_PIN);
         servo.write(0);
